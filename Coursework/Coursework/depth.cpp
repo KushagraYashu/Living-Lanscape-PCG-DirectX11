@@ -122,7 +122,49 @@ void DepthShader::setShaderParametersTess(ID3D11DeviceContext* deviceContext, co
     camPtr->cameraPosition = XMFLOAT4(camPos.x, camPos.y, camPos.z, 0.f);
     deviceContext->Unmap(camBuffer, 0);
     deviceContext->HSSetConstantBuffers(1, 1, &camBuffer);
+    //deviceContext->PSSetConstantBuffers(0, 1, &camBuffer);
     //deviceContext->DSSetConstantBuffers(1, 1, &camBuffer); // Optional: if needed for domain shader
+
+    // Set shader resources (heightmap for tessellation)
+    deviceContext->DSSetShaderResources(0, 1, &heightMap);
+    deviceContext->DSSetSamplers(0, 1, &sampleState);
+}
+
+void DepthShader::setShaderParametersLinearDepthTess(ID3D11DeviceContext* deviceContext, const XMMATRIX& worldMatrix, const XMMATRIX& viewMatrix, const XMMATRIX& projectionMatrix, XMFLOAT3 camPos, ID3D11ShaderResourceView* heightMap)
+{
+    D3D11_MAPPED_SUBRESOURCE mappedResource;
+    MatrixBufferType* dataPtr;
+
+    // Transpose the matrices for shader compatibility (since shaders expect column-major order)
+    XMMATRIX tworld = XMMatrixTranspose(worldMatrix);
+    XMMATRIX tview = XMMatrixTranspose(viewMatrix);
+    XMMATRIX tproj = XMMatrixTranspose(projectionMatrix);
+
+    // Lock the constant buffer to update matrix data for vertex and domain shaders
+    deviceContext->Map(matrixBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    dataPtr = (MatrixBufferType*)mappedResource.pData;
+    dataPtr->world = tworld;
+    dataPtr->view = tview;
+    dataPtr->projection = tproj;
+
+    // Initialize light view and projection matrices to identity (no lighting data for depth pass)
+    dataPtr->lightView[0] = XMMATRIX();
+    dataPtr->lightView[1] = XMMATRIX();
+    dataPtr->lightProjection[0] = XMMATRIX();
+    dataPtr->lightProjection[1] = XMMATRIX();
+
+    deviceContext->Unmap(matrixBuffer, 0);
+    deviceContext->HSSetConstantBuffers(0, 1, &matrixBuffer);
+    deviceContext->DSSetConstantBuffers(0, 1, &matrixBuffer);
+
+    // Update the camera position buffer for shaders
+    CameraBuffer* camPtr;
+    deviceContext->Map(camBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    camPtr = (CameraBuffer*)mappedResource.pData;
+    camPtr->cameraPosition = XMFLOAT4(camPos.x, camPos.y, camPos.z, 0.f);
+    deviceContext->Unmap(camBuffer, 0);
+    deviceContext->HSSetConstantBuffers(1, 1, &camBuffer);
+    deviceContext->PSSetConstantBuffers(0, 1, &camBuffer);
 
     // Set shader resources (heightmap for tessellation)
     deviceContext->DSSetShaderResources(0, 1, &heightMap);
@@ -152,4 +194,39 @@ void DepthShader::setShaderParameters(ID3D11DeviceContext* deviceContext, const 
 
     deviceContext->Unmap(matrixBuffer, 0);
     deviceContext->VSSetConstantBuffers(0, 1, &matrixBuffer);
+}
+
+void DepthShader::setShaderParametersLinearDepth(ID3D11DeviceContext* deviceContext, const XMMATRIX& worldMatrix, const XMMATRIX& viewMatrix, const XMMATRIX& projectionMatrix, XMFLOAT3 camPos)
+{
+    D3D11_MAPPED_SUBRESOURCE mappedResource;
+    MatrixBufferType* dataPtr;
+
+    // Transpose the matrices for shader compatibility (since shaders expect column-major order)
+    XMMATRIX tworld = XMMatrixTranspose(worldMatrix);
+    XMMATRIX tview = XMMatrixTranspose(viewMatrix);
+    XMMATRIX tproj = XMMatrixTranspose(projectionMatrix);
+
+    // Lock the constant buffer to update matrix data for vertex and domain shaders
+    deviceContext->Map(matrixBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    dataPtr = (MatrixBufferType*)mappedResource.pData;
+    dataPtr->world = tworld;
+    dataPtr->view = tview;
+    dataPtr->projection = tproj;
+
+    // Initialize light view and projection matrices to identity (no lighting data for depth pass)
+    dataPtr->lightView[0] = XMMATRIX();
+    dataPtr->lightView[1] = XMMATRIX();
+    dataPtr->lightProjection[0] = XMMATRIX();
+    dataPtr->lightProjection[1] = XMMATRIX();
+
+    deviceContext->Unmap(matrixBuffer, 0);
+    deviceContext->VSSetConstantBuffers(0, 1, &matrixBuffer);
+
+    // Update the camera position buffer for shaders
+    CameraBuffer* camPtr;
+    deviceContext->Map(camBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    camPtr = (CameraBuffer*)mappedResource.pData;
+    camPtr->cameraPosition = XMFLOAT4(camPos.x, camPos.y, camPos.z, 0.f);
+    deviceContext->Unmap(camBuffer, 0);
+    deviceContext->PSSetConstantBuffers(0, 1, &camBuffer);
 }

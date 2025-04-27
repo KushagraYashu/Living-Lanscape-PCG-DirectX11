@@ -2,12 +2,14 @@
 static const int lightSize = 2;
 
 // Texture and sampler registers
-Texture2D texture0 : register(t0); // The main texture
+Texture2D grassTexture : register(t0); // The main texture
+Texture2D rockTexture : register(t1); // The main texture
+Texture2D snowTexture : register(t2); // The main texture
 SamplerState sampler0 : register(s0); // The sampler for the texture
-Texture2D heightMap : register(t1); // The height map texture used for terrain manipulation
+Texture2D heightMap : register(t3); // The height map texture used for terrain manipulation
 
 // Depth map textures for each light source (used for shadow mapping)
-Texture2D depthMapTexture[lightSize] : register(t2);
+Texture2D depthMapTexture[lightSize] : register(t4);
 
 // Constant buffer containing light properties
 cbuffer LightBuffer : register(b0)
@@ -21,6 +23,14 @@ cbuffer LightBuffer : register(b0)
     float4 type[lightSize]; // Type of light (directional, point, etc.)
     float4 attFactors[lightSize]; // Attenuation factors for each light source
 };
+
+cbuffer TexturingHeights : register(b1)
+{
+    float2 grassHeights;
+    float2 rockHeights;
+    float2 snowHeights;
+    float2 padding;
+}
 
 // Structure to hold the input data for the vertex shader
 struct InputType
@@ -210,10 +220,6 @@ float3 CalcNormal(float2 UV, float4 vertexManipulationData)
 // Applies lighting calculations and shadow detection to the texture
 float4 main(InputType input) : SV_TARGET
 {
-    // Sample the texture at the provided texture coordinates
-    float4 textureColour;
-    textureColour = texture0.Sample(sampler0, input.tex);
-    
     // Calculate the normal using the texture and vertex manipulation data
     float3 newNormal = CalcNormal(input.tex, input.vertexManipulationData);
     float3 normal;
@@ -271,11 +277,22 @@ float4 main(InputType input) : SV_TARGET
         lightColour = saturate(lightColour + ambientColour[i]);
     }
 
-    // Convert the texture color to linear space by applying gamma correction (2.2)
-    textureColour.xyz = pow(texture0.Sample(sampler0, input.tex), 2.2f);
+    // Fetching the textures (grass, rock, snow)
+    float4 grassTex = grassTexture.Sample(sampler0, input.tex);
+    grassTex.rgb = pow(grassTex.rgb, 2.2);
+    float4 rockTex = rockTexture.Sample(sampler0, input.tex);
+    rockTex.rgb = pow(rockTex.rgb, 2.2);
+    float4 snowTex = snowTexture.Sample(sampler0, input.tex) * 2;
+    snowTex = pow(snowTex, 2.2);
+    
+    // Texturing based on height
+    float height = input.worldPosition.y;
+    float grassWeight = smoothstep(grassHeights.y, grassHeights.x, height);
+    float rockWeight = smoothstep(rockHeights.x, rockHeights.y, height);
+    float snowWeight = smoothstep(snowHeights.x, snowHeights.y, height);
     
     // Multiply the light color by the texture color to get the final color
-    float4 finalColour = lightColour * textureColour;
+    float4 finalColour = lightColour * ((grassTex * grassWeight) + (rockTex * rockWeight) + (snowTex * snowWeight));
     
     // Apply gamma correction to the final color
     finalColour.xyz = pow(finalColour.xyz, 1.0f / 2.2f);

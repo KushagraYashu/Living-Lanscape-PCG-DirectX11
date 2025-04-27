@@ -13,6 +13,7 @@
 #define _CAMERA_H_
 
 #include <directxmath.h>
+#include <vector>
 
 using namespace DirectX;
 
@@ -41,19 +42,20 @@ public:
 	void update();				///< Update camera, recalculates view matrix based on rotation
 	XMMATRIX getViewMatrix();	///< Get current view matrix of camera
 	XMMATRIX getOrthoViewMatrix();	///< Get current orthographic view matrix for camera
+	XMMATRIX getProjectionMatrix(float fovRad, float screenNear, float screenFar, float aspectRatio);
 
 	void setFrameTime(float);
 
-	void moveForward();			///< default function for moving forward
-	void moveBackward();		///< default function for moving backward
+	void moveForward(std::vector<float> heightData, int size, bool flightMode);///< default function for moving forward
+	void moveBackward(std::vector<float> heightData, int size, bool flightMode);///< default function for moving backward
 	void moveUpward();			///< default function for moving upward
 	void moveDownward();		///< default function for moving downward
 	void turnLeft();			///< default function for turning left
 	void turnRight();			///< default function for turning right
 	void turnUp();				///< default function for looking up
 	void turnDown();			///< default function for looking down
-	void strafeRight();			///< default function for moving right
-	void strafeLeft();			///< default function for moving left
+	void strafeRight(std::vector<float> heightData, int size, bool flightMode);///< default function for moving right
+	void strafeLeft(std::vector<float> heightData, int size, bool flightMode);///< default function for moving left
 	void turn(int x, int y);	///< default function for turning in both x/y axis
 
 private:
@@ -63,6 +65,8 @@ private:
 	XMMATRIX orthoMatrix;	///< current orthographic matrix
 	float speed, frameTime;	///< movement speed and time variables
 	float lookSpeed;		///< rotation speed
+
+	float lerp(const float& a, const float& b, float t);
 };
 
 #endif

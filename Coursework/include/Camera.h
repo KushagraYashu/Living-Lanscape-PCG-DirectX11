@@ -41,6 +41,7 @@ public:
 	void update();				///< Update camera, recalculates view matrix based on rotation
 	XMMATRIX getViewMatrix();	///< Get current view matrix of camera
 	XMMATRIX getOrthoViewMatrix();	///< Get current orthographic view matrix for camera
+	XMMATRIX getProjectionMatrix(float fovRad, float screenNear, float screenFar, float aspectRatio);
 
 	void setFrameTime(float);
 

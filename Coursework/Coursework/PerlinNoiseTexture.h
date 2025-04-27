@@ -8,27 +8,63 @@
 #include <vector>
 #include "SimplexNoise.h"
 #include "TextureManager.h"
-//#include 
 
+// Class for perlin noise texture
 class PerlinNoiseTexture {
 private:
-	int call;
-	int terrainSize;
-	std::vector<float> noiseData;
+	// Terrain size and volume size variables
+	int terrainSize, volumeSizeX, volumeSizeY, volumeSizeZ;
 
+	// vectors for noise and density data
+	std::vector<float> noiseData;
+	std::vector<float> densityData;
+
+	// texture and SRV for noise texture
 	ID3D11Texture2D* noiseTexture;
 	ID3D11ShaderResourceView* noiseTextureSRV;
 
-	void CreateTexture(ID3D11Device* device, TextureManager* textureMgr);
+	// texture and SRV for density texture
+	ID3D11Texture3D* densityTexture;
+	ID3D11ShaderResourceView* densityTextureSRV;
+
+	// method to create height map texture
+	void CreateTextureHM(ID3D11Device* device, TextureManager* textureMgr);
+
+	// method to create density texture
+	void CreateTextureDM(ID3D11Device* device, TextureManager* textureMgr);
 
 public:
-	void GeneratePerlinNoiseTexture(ID3D11Device* device, TextureManager* textureMgr);
+	// method to generate the height map
+	void GeneratePerlinNoiseTextureHM(ID3D11Device* device, TextureManager* textureMgr, float perlinFreq = 0.06, float perlinAmp = 12.5);
+
+	// method to generate density map
+	void GeneratePerlinNoiseTextureDM(ID3D11Device* device, TextureManager* textureMgr, float perlinFreq = 0.1);
+
+	// method to fetch the noise texture SRV
 	ID3D11ShaderResourceView* getPerlinNoiseTextureSRV() { return noiseTextureSRV; }
 
+	// method to smooth out noise texture values
 	void SmoothHeightMap(ID3D11Device* device, TextureManager* textureMgr);
 
-	void SaveTextureAsPNG(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture2D* texture, const std::wstring& filename);
+	// method to get the height values at a grid location
+	float GetHeightAt(int x, int y) { 
+		if (x && y >= 0) {
+			if(x && y < terrainSize)
+				return noiseData[(y * terrainSize) + x];
+			else
+				return noiseData[((terrainSize - 1) * terrainSize) + (terrainSize - 1)];
+		}
+		else 
+			return noiseData[(0) + 0];
+	}
 
-	PerlinNoiseTexture(int terrainSize);
+	// method to get the noise data vector
+	std::vector<float> GetHeightDataRaw() { return noiseData; }
+
+	// method to get the terrain size
+	int GetTerrainSize() { return terrainSize; }
+
+	// Constructor with size initialisation
+	PerlinNoiseTexture(int terrainSize, int volumeSx, int volumeSy, int volumeSz);
 	~PerlinNoiseTexture();
 };

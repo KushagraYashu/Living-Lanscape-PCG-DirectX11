@@ -1,14 +1,13 @@
 #include "App1.h"
 
-XMFLOAT3 params = XMFLOAT3(0, 0, 0);
+// Perlin noise height map texture parameters (.x - frequency, .y - amplitude)
+XMFLOAT2 paramsHM = XMFLOAT2(3.6969f, 6.9f);
+float paramsDMFreq = 0.1;
 
 // Screen-Related Variables
 int screenWidthVar, screenHeightVar;  // Holds the width and height of the screen for rendering
 float aspectRatio;  // Stores the aspect ratio of the screen for correct projection
 float fieldOfView = XM_PI / 4;  // Field of view for the camera, set to 45 degrees by default
-
-// Vertex Manipulation
-float heightMapStrength = 30.f;  // Controls how much the height map affects the terrain displacement
 
 // Light Properties
 XMFLOAT4 lightType[lightSize];  // Stores the type of each light (e.g., directional, point light)
@@ -24,12 +23,48 @@ XMFLOAT3 radius = XMFLOAT3(70, 70, 70);  // Radius of light's movement
 
 // Positions and Transformations
 XMFLOAT3 camPos = XMFLOAT3();  // Camera position in world space
-XMFLOAT3 mountainPeak = XMFLOAT3(25, 13.95, 25);  // Position of the mountain peak in the scene
-XMFLOAT3 spherePos = XMFLOAT3(25.f, 12.f, 28.f);  // Position of the sphere object
-XMFLOAT3 sphereScale = XMFLOAT3(.5, .5, .5);  // Scaling factor for the sphere
-XMFLOAT3 cottagePosition = XMFLOAT3(mountainPeak.x + 5, mountainPeak.y - 2.3, mountainPeak.z);  // Position of the cottage
-XMFLOAT3 spotlightModelPosition = XMFLOAT3(mountainPeak.x, mountainPeak.y - 1.7f, mountainPeak.z + 1.f);  // Position of the spotlight model
+XMFLOAT3 sphereScale = XMFLOAT3(.25, .25, .25);  // Scaling factor for the sphere
+XMFLOAT3 cottagePosition = XMFLOAT3(22, 20, 20);  // Position of the cottage
+XMFLOAT2 cottageGridPos = XMFLOAT2(cottagePosition.x - 1, cottagePosition.z - 1); // Position of the cottage on the terrain grid (X-Z plane)
+XMFLOAT3 spotlightModelPosition = XMFLOAT3(cottagePosition.x, 20, cottagePosition.z + 2);  // Position of the spotlight model
+XMFLOAT2 spotlightGridPos = XMFLOAT2(spotlightModelPosition.x - 1, spotlightModelPosition.z - 1); // Position of the spotlight model on the terrain grid (X-Z plane)
 XMFLOAT3 sceneCentre = XMFLOAT3(25, 25, 25);  // The center of the scene, used for light positioning
+XMFLOAT3 cloudBoxSize = XMFLOAT3(100, 50, 100); // The size of the volumetric cloud box
+XMFLOAT3 cloudBoxPosition = XMFLOAT3(); // Position of the cloud box
+
+// Gameplay variables
+XMFLOAT2 coinPositionsXZ[5] = {					// Positions for various coins
+	XMFLOAT2(35.6, 27.3),
+	XMFLOAT2(42.45, 14.7),
+	XMFLOAT2(28.7, 11.98),
+	XMFLOAT2(13.75, 13.19),
+	XMFLOAT2(11.61, 33.58)
+};
+bool coinCollected[5] = {						// Coin collection status
+	false,
+	false,
+	false,
+	false,
+	false
+};
+bool allCollected = false;						// Flag to check if all coins have been collected		
+bool gameFinish = false;						// Flag to check if the game is finished
+int totCoins = 5;								// Total number of coins in the scene
+int colCoins = 0;								// Number of coins collected
+
+// Cloud related variables
+XMFLOAT4 gasColor = XMFLOAT4(1, 1, 1, 1);		// cloud gas color
+float sampleNumbers = 200;						// sample numbers for raymarching
+float sigma_a = 0.5f;							// sigma_a of the gas (the higher the value, the thicker the gas)
+float g = 0.25f;								// Phase function isotropy parameter
+float gasDensity = 0.055f;						// density of the gas
+float speedX = 0;								// cloud speed in X
+float speedY = 0.02;							// clouds speed in Y
+
+// Texturing related variables
+XMFLOAT2 grassTexVals = XMFLOAT2(-.5, .2);		// height control values for grass texture
+XMFLOAT2 rockTextVals = XMFLOAT2(-.2, 2);		// height control values for rock texture
+XMFLOAT2 snowTexVals = XMFLOAT2(1, 5);			// height control values for snow texture
 
 // Time-Related Variables
 float elapsedTime = 0;  // Tracks the total time elapsed in the scene
@@ -55,12 +90,11 @@ bool timeBool = true;  // Determines if the time progression is enabled
 bool shadowBool = true;  // Enables or disables shadow rendering
 bool resetBool = false;  // Flag for resetting the scene
 bool debugBool = false;  // Enables or disables debug mode, typically for troubleshooting
-bool smooth = false;
-
-
-bool generateMap = false;
-int call = 0;
-std::wstring perlinNoiseTexName = L"perlinNoiseHeightMap" + std::to_wstring(call);
+bool smooth = false;  // Enables or disables terrain smoothing
+bool camFlightMode = false;  // Enables or disables camera flight mode
+bool generateHM = false;  // Flag for generating a new terrain map
+bool generateDM = false; // Flag for generating a new density map
+bool gravity = true; // Flag for gravity
 
 App1::App1()
 {
@@ -82,36 +116,32 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 
 	// Step 3: Initialize textures.
 	// Loading various textures for the scene from files.
-
-	// Height diffuse map sourced from https://www.motionforgepictures.com/height-maps/
-	//textureMgr->loadTexture(L"heightMap", L"res/HMMR.png"); // Load height map texture.
-	textureMgr->loadTexture(L"mountain diffuse", L"res/DFMR.png"); // Load mountain diffuse texture.
-	// Spotlight mode and texture sourced from https://www.turbosquid.com/3d-models/free-street-lamp-3d-model/794502
+	// The textures (grass, rock, and snow) are sourced from Google Images.
+	textureMgr->loadTexture(L"Grass Tex", L"res/grassTex.png");	//grass texture for height based painting
+	textureMgr->loadTexture(L"Rock Tex", L"res/rockTex.png"); 	//rock texture for height based painting
+	textureMgr->loadTexture(L"Snow Tex", L"res/snowTex.png");	//snow texture for height based painting
+	// Coin model and texture sourced from https://sketchfab.com/3d-models/stylized-coin-8cd6f95c44994ed5944a42892d0ffc10
+	textureMgr->loadTexture(L"Coin Tex", L"res/coinTex.jpg");	//coin texture for coin models
+	// Spotlight model and texture sourced from https://www.turbosquid.com/3d-models/free-street-lamp-3d-model/794502
 	textureMgr->loadTexture(L"spotlight", L"res/Street_Lamp_DM.dds"); // Load spotlight texture.
-	// Cottage is from lab assets
+	// Cottage is from lab assets (Term 1 CMP502)
 	textureMgr->loadTexture(L"cottage", L"res/cottage_diffuse_1.dds"); // Load cottage texture.
-	// Clouds sourced from https://rastertek.com/pic0206.gif
-	textureMgr->loadTexture(L"clouds1", L"res/cloud002.dds"); // Load cloud texture.
 	// Sun texture sourced from https://it.pinterest.com/pin/417357090443735050/
 	textureMgr->loadTexture(L"sunTex", L"res/sunTex.jpg"); // Load sun texture.
 
 	// Step 4: Initialize mesh objects.
 	// Create meshes used in the scene (plane, sphere, models).
 	mainMesh = new PlaneMesh(renderer->getDevice(), renderer->getDeviceContext(), 50); // Plane mesh.
-	sphere = new SphereMesh(renderer->getDevice(), renderer->getDeviceContext()); // Sphere mesh.
-	volumetricSphere = new SphereMesh(renderer->getDevice(), renderer->getDeviceContext());
-	// Spotlight mode and texture sourced from https://www.turbosquid.com/3d-models/free-street-lamp-3d-model/794502
+	volumetricCloudBox = new CubeMesh(renderer->getDevice(), renderer->getDeviceContext()); // Box mesh for volumetric clouds.
 	spotlightModel = new AModel(renderer->getDevice(), "res/models/Street_Lamp.FBX"); // Spotlight model.
-	// Cottage is from lab assets
 	cottageModel = new AModel(renderer->getDevice(), "res/models/cottage_fbx.fbx"); // Cottage model.
+	coinModel = new AModel(renderer->getDevice(), "res/coin.fbx"); // Coin model.
 	skyDome = new SphereMesh(renderer->getDevice(), renderer->getDeviceContext()); // Sky dome class for the background.
 	cloudsPlane = new PlaneMesh(renderer->getDevice(), renderer->getDeviceContext(), 1000); // Clouds plane.
-	quad = new QuadMesh(renderer->getDevice(), renderer->getDeviceContext());
 	sunSphere = new SphereMesh(renderer->getDevice(), renderer->getDeviceContext(), 10); // Sun sphere.
 
 	// Step 5: Initialize render textures.
 	// Set up multiple render textures for various purposes (rendering to a texture for bloom, sun sphere, etc.).
-	{
 		renderTextureSource = new RenderTexture(renderer->getDevice(), screenWidth, screenHeight, SCREEN_NEAR, SCREEN_DEPTH);
 		renderTextureSourceBloom = new RenderTexture(renderer->getDevice(), screenWidth, screenHeight, SCREEN_NEAR, SCREEN_DEPTH);
 		renderTextureSunSphere[0] = new RenderTexture(renderer->getDevice(), screenWidth, screenHeight, SCREEN_NEAR, SCREEN_DEPTH);
@@ -135,9 +165,10 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 		renderTexturesBloom[4] = new RenderTexture(renderer->getDevice(), screenWidth / 8, screenHeight / 8, SCREEN_NEAR, SCREEN_DEPTH);
 		renderTexturesBloom[5] = new RenderTexture(renderer->getDevice(), screenWidth, screenHeight, SCREEN_NEAR, SCREEN_DEPTH);
 		renderTextureColorFilters = new RenderTexture(renderer->getDevice(), screenWidth, screenHeight, SCREEN_NEAR, SCREEN_DEPTH);
-	}
-
-	// Step 6: Initialize ortho mesh (for rendering 2D elements like UI overlays).
+		renderTextureClouds = new RenderTexture(renderer->getDevice(), screenWidth, screenHeight, SCREEN_NEAR, SCREEN_DEPTH);
+		renderTextureCloudBlended = new RenderTexture(renderer->getDevice(), screenWidth, screenHeight, SCREEN_NEAR, SCREEN_DEPTH);
+	
+	// Step 6: Initialize ortho mesh (for rendering textures over).
 	orthoMeshFull = new OrthoMesh(renderer->getDevice(), renderer->getDeviceContext(), screenWidth, screenHeight, 0, 0);
 
 	// Step 7: Set color guides (sky colors for different times of the day).
@@ -150,7 +181,7 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 	contrast = 1.02; // Set contrast.
 	saturation = 1.25; // Set saturation.
 	sunColor = XMFLOAT4(1.0, 0.3, 0.3, 1.0); // Set sun color for sunrise.
-	// Noon colors.
+	// Noon colors. (reference values)
 	/*skyDome->SetCenterColor(XMFLOAT4(0.9607843137254902, 0.8470588235294118, 0.7294117647058823, 1));
 	skyDome->SetApexColor(XMFLOAT4(0.615686274509804, 0.6392156862745098, 0.7294117647058823, 1));
 	tintColor = XMFLOAT3(1.0, 1.0, 0.9);
@@ -159,7 +190,7 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 	contrast = 1.015;
 	saturation = 1.35;
 	sunColor = XMFLOAT4(1.0, 1.0, 0.9, 1.0);*/
-	// Sunset colors.
+	// Sunset colors. (reference values)
 	/*skyDome->SetCenterColor(XMFLOAT4(0.9568627450980393, 0.2549019607843137, 0.24705882352941178, 1));
 	skyDome->SetApexColor(XMFLOAT4(0.12941176470588237, 0.043137254901960784, 0.33725490196078434, 1));
 	tintColor = XMFLOAT3(1.0, 0.5, 0.3);
@@ -168,7 +199,7 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 	contrast = 1.02;
 	saturation = 1.35;
 	sunColor = XMFLOAT4(1.0, 0.2, 0.2, 1.0);*/
-	// Night colors.
+	// Night colors. (reference values)
 	/*skyDome->SetCenterColor(XMFLOAT4(0, 0.011764705882352941, 0.019607843137254902, 1));
 	skyDome->SetApexColor(XMFLOAT4(0, 0.13725490196078433/3, 0.23137254901960785/3, 1));
 	tintColor = XMFLOAT3(0.2, 0.2, 0.8);
@@ -179,19 +210,22 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 
 	// Step 8: Initialize shaders.
 	// Create instances of different shaders used for rendering (vertex manipulation, depth rendering, lighting, etc.).
-	depthShaderTess = new DepthShader(renderer->getDevice(), hwnd, L"VertexManipulation_vs.cso", L"VertexManipulation_hs.cso", L"VertexManipulation_ds.cso", L"depth_ps.cso");
-	lightShaderTess = new LightShader(renderer->getDevice(), hwnd, L"VertexManipulation_vs.cso", L"VertexManipulation_hs.cso", L"VertexManipulation_ds.cso", L"VertexManipulation_ps.cso");
-	lightShader = new LightShader(renderer->getDevice(), hwnd, L"light_vs.cso", L"lightNonTess_ps.cso");
-	depthShader = new DepthShader(renderer->getDevice(), hwnd, L"depth_vs.cso", L"depth_ps.cso");
-	textureShader = new TextureShader(renderer->getDevice(), hwnd);
-	skyDomeShader = new SkyDomeShaderClass(renderer->getDevice(), hwnd, L"SkyDomeShader_vs.cso", L"SkyDomeShader_ps.cso");
-	cloudsShader = new CloudsShader(renderer->getDevice(), hwnd, L"CloudsShader_vs.cso", L"CloudsShader_ps.cso");
-	brightnessFilterShader = new BrightnessFilterShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"BrightnessFilterShader_ps.cso");
-	sunBrightnessFilterShader = new BrightnessFilterShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"SunBrightnessFilterShader_ps.cso");
-	gaussianBlurShader = new GaussianBlurShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"GaussianBlurShader_ps.cso");
+	linearDepthShaderTess = new DepthShader(renderer->getDevice(), hwnd, L"VertexManipulation_vs.cso", L"VertexManipulation_hs.cso", L"VertexManipulation_ds.cso", L"linearDepth_ps.cso");
+	linearDepthShader = new DepthShader(renderer->getDevice(), hwnd, L"depth_vs.cso", L"linearDepth_ps.cso");
+	depthShaderTess = new DepthShader(renderer->getDevice(), hwnd, L"VertexManipulation_vs.cso", L"VertexManipulation_hs.cso", L"VertexManipulation_ds.cso", L"depth_ps.cso"); // Tessellated depth shader.
+	lightShaderTess = new LightShader(renderer->getDevice(), hwnd, L"VertexManipulation_vs.cso", L"VertexManipulation_hs.cso", L"VertexManipulation_ds.cso", L"light_ps.cso"); // Light shader for tessellated objects.
+	lightShader = new LightShader(renderer->getDevice(), hwnd, L"light_vs.cso", L"lightNonTess_ps.cso"); // Light shader for non-tessellated objects.
+	depthShader = new DepthShader(renderer->getDevice(), hwnd, L"depth_vs.cso", L"depth_ps.cso"); // Depth shader for shadow mapping.
+	textureShader = new TextureShader(renderer->getDevice(), hwnd); // Texture shader for basic rendering.
+	skyDomeShader = new SkyDomeShaderClass(renderer->getDevice(), hwnd, L"SkyDomeShader_vs.cso", L"SkyDomeShader_ps.cso"); // SkyDome shader
+	cloudsShader = new CloudsShader(renderer->getDevice(), hwnd, L"CloudsShader_vs.cso", L"CloudsShader_ps.cso"); // Volumetric clouds shader
+	brightnessFilterShader = new BrightnessFilterShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"BrightnessFilterShader_ps.cso"); // Brightness filter shader
+	sunBrightnessFilterShader = new BrightnessFilterShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"SunBrightnessFilterShader_ps.cso"); // Sun brightness filter shader
+	gaussianBlurShader = new GaussianBlurShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"GaussianBlurShader_ps.cso"); // Gaussian blur shader
 	blendShader = new BlendShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"BlendShader_ps.cso");
-	colorFilterShader = new ColorGradingShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"ColorGradingShader_ps.cso");
-	sunShader = new SunShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"SunShader_ps.cso");
+	cloudBlendShader = new BlendShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"CloudBlendShader_ps.cso"); // Clouds blend shader
+	colorFilterShader = new ColorGradingShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"ColorGradingShader_ps.cso"); // Color grading shader
+	sunShader = new SunShader(renderer->getDevice(), hwnd, L"texture_vs.cso", L"SunShader_ps.cso"); // Sun rendering shader
 
 	// Step 9: Initialize light objects.
 	// Create lights and set their properties (position, direction, intensity, color, etc.).
@@ -207,6 +241,8 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 	// Create shadow maps to store depth information for shadows.
 	int shadowmapWidth = 1024 * 4;
 	int shadowmapHeight = 1024 * 4;
+	depthTexture = new RenderTexture(renderer->getDevice(), screenWidth, screenHeight, SCREEN_NEAR, SCREEN_DEPTH);
+
 	for (int i = 0; i < lightSize; i++) {
 		shadowMaps[i] = new ShadowMap(renderer->getDevice(), shadowmapWidth, shadowmapHeight);
 		if (lightType[i].y == 1.f) {
@@ -227,7 +263,7 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 		}
 		else {
 			light[i]->setPosition(position[i].x, position[i].y, position[i].z);
-			direction[i] = XMFLOAT4(0.f, -1.f, .5f, 0.f);
+			direction[i] = XMFLOAT4(0.f, -1.f, .0f, 0.f);
 			position[i] = XMFLOAT4(25.f, 14.65, 26.7, 0.f);
 			diffuse[i] = XMFLOAT4(1.f, 0.f, 0.f, 1.f);
 			light[i]->setDirection(direction[i].x, direction[i].y, direction[i].z);
@@ -237,8 +273,20 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 		}
 	}
 
-	perlinNoiseTexture = new PerlinNoiseTexture(50);
-	//perlinNoiseTexture->GeneratePerlinNoiseTexture(renderer->getDevice(), textureMgr, params.x, params.y, params.z);
+	// Step 11: Generate Perlin Noise textures (Density and Height map).
+	perlinNoiseTexture = new PerlinNoiseTexture(50, cloudBoxSize.x, cloudBoxSize.y, cloudBoxSize.z); // Initialising the generator with terrain size and required references.
+	perlinNoiseTexture->GeneratePerlinNoiseTextureDM(renderer->getDevice(), textureMgr, paramsDMFreq); // Generate 3D density texture for volumetric clouds.
+	perlinNoiseTexture->SmoothHeightMap(renderer->getDevice(), textureMgr); // Smooth/Reset the initial values for Height map
+	perlinNoiseTexture->GeneratePerlinNoiseTextureHM(renderer->getDevice(), textureMgr, paramsHM.x, paramsHM.y); // Generate height map for the terrain
+	for (int i = 0; i < 2; i++) {	// Multiple smooth calls for the desired effect
+		perlinNoiseTexture->SmoothHeightMap(renderer->getDevice(), textureMgr);
+	}
+
+	// Step 12: Initialise camera variables.
+	camera->noiseData = perlinNoiseTexture->GetHeightDataRaw(); // Set the height data in Camera class for collision detection and camera movement.
+	camera->size = perlinNoiseTexture->GetTerrainSize(); // Set the size of the terrain in Camera class.
+	camera->flightMode = false; // Set flight mode to false.
+	camera->setPosition(22, 6, 23); // Set initial Position.
 }
 
 // Destructor for the App1 class, handles cleanup of allocated resources.
@@ -309,10 +357,6 @@ App1::~App1()
 	if (cloudsPlane) {
 		delete cloudsPlane;
 		cloudsPlane = nullptr;
-	}
-	if (sphere) {
-		delete sphere;
-		sphere = nullptr;
 	}
 	if (spotlightModel) {
 		delete spotlightModel;
@@ -403,6 +447,36 @@ bool App1::frame()
 	return true;
 }
 
+void App1::UpdatePositions() {
+	// Step 1: Update time and camera positions for further calculations.
+	timeFloat += timer->getTime();
+	camPos = camera->getPosition();
+
+	if (gravity) { // Checking if gravity is enabled
+
+		// Step 2: Update grid positions for objects and fetch the height value at it from the perlin texture.
+		cottageGridPos = XMFLOAT2((int)(cottagePosition.x - 1), (int)(cottagePosition.z - 1)); // Grid position for cottage
+		float heightValueAtCottage = (perlinNoiseTexture->GetHeightAt(cottageGridPos.x, cottageGridPos.y)); // Height value at cottage grid position
+		spotlightGridPos = XMFLOAT2(spotlightModelPosition.x - 1, spotlightModelPosition.z - 1); // Grid position for spotlight model
+		float heightValueAtSpotlight = (perlinNoiseTexture->GetHeightAt(spotlightGridPos.x, spotlightGridPos.y)); // Height value at spotlight model grid position
+
+		// Step 3: Update the positions of the cottage and spotlight model based on the height values and artificial gravity.
+		if (cottagePosition.y > heightValueAtCottage + 0.4f) {
+			cottagePosition.y -= 0.075f; // Artificial gravity effect
+		}
+		else {
+			cottagePosition.y = heightValueAtCottage + 0.4f; // Snapping to the ground (0.4 offset is due to the model's height)
+		}
+
+		if (spotlightModelPosition.y > heightValueAtSpotlight) {
+			spotlightModelPosition.y -= 0.075f; // Artificial gravity effect
+		}
+		else {
+			spotlightModelPosition.y = heightValueAtSpotlight; // Snapping to the ground
+		}
+	}
+}
+
 // Main render function to handle all the stages of the rendering pipeline: scene rendering, shadow mapping, lighting, post-processing, and GUI rendering.
 bool App1::render()
 {
@@ -413,27 +487,23 @@ bool App1::render()
 	}
 
 	// Step 2: Begin rendering the scene, clearing the screen with black.
-	renderer->beginScene(0, 0, 0, 0); // Begin a new frame, setting background color to black.
+	renderer->beginScene(0, 0, 0, 1); // Begin a new frame, setting background color to black.
 
 	// Step 3: Set up the render texture and clear it for the initial render.
 	renderTextureSource->setRenderTarget(renderer->getDeviceContext()); // Set render target to renderTextureSource.
-	renderTextureSource->clearRenderTarget(renderer->getDeviceContext(), 0.0f, 0.0f, 0.0f, 0.0f); // Clear with black (no color).
+	renderTextureSource->clearRenderTarget(renderer->getDeviceContext(), 0.0f, 0.0f, 0.0f, 1.0f); // Clear with black.
 
 	// Step 4: Render the SkyBox (background) first.
 	SkyBox(); // Call SkyBox function to render the sky before anything else (background effect).
 
-	// Step 5: Render clouds on top of the skybox.
-	//Clouds(); // Render cloud texture to the scene.
+	// Step 5: Update positions of objects in the scene.
+	UpdatePositions();
 
-	// Step 6: Set wireframe mode if wireframeToggle is enabled.
-	renderer->setWireframeMode(wireframeToggle); // If wireframeToggle is true, enable wireframe rendering mode.
-
-	// Step 7: Optionally, enable shadow depth rendering.
+	// Step 6: Optionally, enable shadow depth rendering.
 	if (shadowBool) {
 		shadowDepth(); // Call shadow depth function to generate shadow maps if shadowBool is true.
 	}
 	else {
-		// Step 8: Clear shadow maps if shadows are disabled.
 		for (int i = 0; i < lightSize; i++) {
 			shadowMaps[i]->BindDsvAndSetNullRenderTarget(renderer->getDeviceContext()); // Unbind shadow maps.
 			renderer->setBackBufferRenderTarget(); // Reset to back buffer.
@@ -441,31 +511,36 @@ bool App1::render()
 		}
 	}
 
-	// Step 9: Render the lighting effects (shaders and light sources).
+	// Step 7: Set wireframe mode if wireframeToggle is enabled.
+	renderer->setWireframeMode(wireframeToggle);
+
+	// Step 8: Render the lighting effects (shaders and light sources).
 	lighting(renderTextureSource, false); // Apply lighting effects to the renderTextureSource.
 
-	// Step 10: Render the sun sphere in the scene.
+	// Step 9: Render the sun sphere in the scene.
 	renderSunSphere(); // Render the sun in the scene (could be part of a lighting effect).
 
-	Clouds();
+	// Step 10: Turn off wireframe mode after main rendering.
+	renderer->setWireframeMode(false);
 
-	// Step 11: Reset the render target to the back buffer and disable wireframe mode.
+	// Step 11: Render the clouds and blend with the past render calls.
+	Clouds(renderTextureSource);
+
+	// Step 12: Reset the render target to the back buffer.
 	renderer->setBackBufferRenderTarget(); // Reset render target to back buffer for final scene rendering.
-	renderer->setWireframeMode(false); // Turn off wireframe mode after rendering.
 
-	// Step 12: Apply post-processing effects if enabled.
+	// Step 13: Apply post-processing effects if enabled.
 	if (postProcessingBool) {
 		postProcessing(); // Apply post-processing effects such as bloom, color grading, etc.
-		postProcessingBool = false;
 	}
 
-	// Step 13: Perform final rendering (combine all passes, add effects).
-	finalRender(); // Final scene rendering including any post-processing effects.
+	// Step 14: Perform final rendering (combine all passes, add effects).
+	finalRender(renderTextureCloudBlended); // Final scene rendering onto an Ortho Mesh.
 
-	// Step 14: Render the graphical user interface (GUI) elements.
+	// Step 15: Render the graphical user interface (GUI) elements.
 	gui(); // Render the GUI on top of the scene (HUD, menus, etc.).
 
-	// Step 15: Present the rendered scene to the screen.
+	// Step 16: Present the rendered scene to the screen.
 	renderer->endScene(); // Finalize the frame and present the result to the screen.
 
 	return true; // Return true indicating the render function executed successfully.
@@ -499,72 +574,89 @@ void App1::renderSunSphere() {
 	}
 }
 
-// Renders clouds in the scene, updates cloud movement, and applies a cloud texture based on elapsed time.
-// Rastertek (2013) DirectX 11 Terrain Tutorial (Lesson 11) (code version 1) [online tutorial]. Adapted from: https://rastertek.com/tertut11.html.
-void App1::Clouds() {
-	// Step 1: Increment the elapsed time to control cloud movement animation.
-	timeFloat += timer->getTime();
+// Renders volumetric clouds in the scene, updates cloud movement, and blend this cloud texture with the existing render.
+void App1::Clouds(RenderTexture* renderTextureSource) {
+	// Step 1: Prepare transformation matrices for the clouds.
+	XMMATRIX worldMatrix = renderer->getWorldMatrix(); // World matrix for the clouds.
+	XMMATRIX viewMatrix = camera->getViewMatrix();     // Camera's view matrix.
+	XMMATRIX projectionMatrix = renderer->getProjectionMatrix(); // Projection matrix for rendering.
+	XMMATRIX camProjectionMatrix = camera->getProjectionMatrix(fieldOfView, SCREEN_NEAR, SCREEN_DEPTH, aspectRatio);
 
-	// Step 2: Retrieve and update the camera's position for correct cloud positioning.
+	// Step 2: Capture the linear depth of the scene objects
+	depthTexture->setRenderTarget(renderer->getDeviceContext());
+	depthTexture->clearRenderTarget(renderer->getDeviceContext(), 1, 1, 1, 1);
+	// Main mesh
+	mainMesh->sendData(renderer->getDeviceContext(), D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+	linearDepthShaderTess->setShaderParametersLinearDepthTess(renderer->getDeviceContext(), worldMatrix, viewMatrix, camProjectionMatrix, camera->getPosition(), textureMgr->getTexture(L"perlinNoiseHeightMap"));
+	linearDepthShaderTess->render(renderer->getDeviceContext(), mainMesh->getIndexCount());
+	// Cottage
+	cottageModel->sendData(renderer->getDeviceContext());
+	linearDepthShader->setShaderParametersLinearDepth(renderer->getDeviceContext(), worldMatrix * XMMatrixRotationX(XM_PI / 2) * XMMatrixScaling(1, .4, .75) * XMMatrixTranslation(cottagePosition.x, cottagePosition.y, cottagePosition.z), viewMatrix, camProjectionMatrix, camera->getPosition());
+	linearDepthShader->render(renderer->getDeviceContext(), cottageModel->getIndexCount());
+	// Sportlight model
+	spotlightModel->sendData(renderer->getDeviceContext());
+	linearDepthShader->setShaderParametersLinearDepth(renderer->getDeviceContext(), worldMatrix * XMMatrixScaling(0.05, 0.05, 0.05) * XMMatrixRotationX(XM_PI / 2) * XMMatrixRotationY(-XM_PI / 2) * XMMatrixTranslation(spotlightModelPosition.x, spotlightModelPosition.y, spotlightModelPosition.z), viewMatrix, camProjectionMatrix, camera->getPosition());
+	linearDepthShader->render(renderer->getDeviceContext(), spotlightModel->getIndexCount());
+
+	// Step 3: Set the render target to the cloud texture.
+	renderTextureClouds->setRenderTarget(renderer->getDeviceContext());
+	renderTextureClouds->clearRenderTarget(renderer->getDeviceContext(), 0.0f, 0.0f, 0.0f, 1.0f); // Clear the render target.
+
+	// Step 4: Retrieve and update the camera's position for correct cloud positioning.
 	XMFLOAT3 camPosition;
 	camera->update(); // Update the camera position and rotation.
 	camPosition = camera->getPosition(); // Retrieve the updated camera position.
 
-	// Step 3: Set render states for skybox rendering.
+	// Step 5: Adjust the position of the clouds.
+	cloudBoxPosition = XMFLOAT3(25, 75, 25);
+
+	// Step 6: Change culling mode
 	renderer->setFaceCulling(D3D11_CULL_NONE); // Disable culling so that both sides of the clouds are visible.
-	renderer->setZBuffer(false); // Disable Z-buffer to avoid depth issues when rendering clouds in the background.
 
-	// Step 4: Prepare transformation matrices for the clouds.
-	XMMATRIX worldMatrix = renderer->getWorldMatrix(); // World matrix for the clouds.
-	XMMATRIX viewMatrix = camera->getViewMatrix();     // Camera's view matrix.
-	XMMATRIX projectionMatrix = renderer->getProjectionMatrix(); // Projection matrix for rendering.
-
-	// Step 5: Adjust the world matrix to position the clouds based on the camera's position.
-	// This ensures that clouds move with the camera for a more natural effect.
-	//worldMatrix = XMMatrixTranslation(camPosition.x - 500, camPosition.y + 40, camPosition.z - 500);
-
-	// Step 6: Send the cloud plane data to the GPU for rendering.
-	//cloudsPlane->sendData(renderer->getDeviceContext());
-	volumetricSphere->sendData(renderer->getDeviceContext());
+	// Step 7: Send the cloud box data to the GPU for rendering.
+	volumetricCloudBox->sendData(renderer->getDeviceContext());
 	cloudsShader->setShaderParameters(
 		renderer->getDeviceContext(),
-		worldMatrix * XMMatrixTranslation(35, 12, 32),              // Position the clouds correctly.
+		worldMatrix * XMMatrixScaling(cloudBoxSize.x, cloudBoxSize.y, cloudBoxSize.z) * XMMatrixTranslation(cloudBoxPosition.x, cloudBoxPosition.y, cloudBoxPosition.z),  // Position the clouds correctly.
 		viewMatrix,               // Camera view for proper positioning.
 		projectionMatrix,         // Project the clouds into 3D space.
-		textureMgr->getTexture(L"default"),
-		camera->getPosition(),
-		XMFLOAT3(35, 12, 32),
-		1,
-		light[0]->getDirection(),
-		light[0]->getDiffuseColour(),
-		.4f						//the higher the value, the thicker the gas
+		textureMgr->getTexture(L"densityVolumeTexture"), // 3D density texture for volumetric clouds.
+		depthTexture->getShaderResourceView(),
+		camera->getPosition(), // Camera position for volumetric calculations.
+		cloudBoxPosition, // Cloud box position for volumetric calculations.
+		cloudBoxSize, // Cloud box size for volumetric calculations.
+		light[0]->getDirection(), // Light direction (limited to directional light) for volumetric calculations.
+		light[0]->getDiffuseColour(), // Light color for volumetric calculations.
+		.25f,				// sigma s value for the light. (higher the value, the thicker the gas)
+		XMFLOAT2(speedX, speedY), // cloud movement speed in UV axis.
+		timeFloat, // Time for cloud movement.
+		gasColor,
+		XMFLOAT3(sigma_a, sampleNumbers, g),
+		gasDensity
 	);
-	cloudsShader->render(renderer->getDeviceContext(), volumetricSphere->getIndexCount());
+	cloudsShader->render(renderer->getDeviceContext(), volumetricCloudBox->getIndexCount());
 
-	// Step 7: Determine the movement rate of the clouds based on whether time is enabled (timeBool).
-	// This controls how quickly the clouds move across the screen.
-	float moveRate = 0;
-	if (timeBool) {
-		moveRate = 0.01 / 2;  // Adjust the rate at which clouds move.
-	}
+	// Step 8: Set the render target to the blended cloud texture.
+	renderTextureCloudBlended->setRenderTarget(renderer->getDeviceContext());
+	renderTextureCloudBlended->clearRenderTarget(renderer->getDeviceContext(), 0, 0, 0, 1); // Clear the render target.
 
-	// Step 8: Set shader parameters for the clouds, including world, view, projection matrices, cloud texture, movement rate, and time.
-	//cloudsShader->setShaderParameters(
-	//	renderer->getDeviceContext(),
-	//	worldMatrix,              // Position the clouds correctly.
-	//	viewMatrix,               // Camera view for proper positioning.
-	//	projectionMatrix,         // Project the clouds into 3D space.
-	//	textureMgr->getTexture(L"clouds1"), // Cloud texture to apply to the cloud plane.
-	//	moveRate,                 // Movement speed of the clouds.
-	//	timeFloat                 // Elapsed time to animate cloud movement.
-	//);
+	// Step 9: Blend the cloud texture with source texture and write onto the cloud blend texture.
+	orthoMeshFull->sendData(renderer->getDeviceContext());
+	worldMatrix = renderer->getWorldMatrix();
+	viewMatrix = camera->getOrthoViewMatrix();
+	projectionMatrix = renderer->getOrthoMatrix();
+	cloudBlendShader->setShaderParameters(
+		renderer->getDeviceContext(),
+		worldMatrix,
+		viewMatrix,
+		projectionMatrix,
+		renderTextureSource->getShaderResourceView(),
+		renderTextureClouds->getShaderResourceView()
+	);
+	cloudBlendShader->render(renderer->getDeviceContext(), orthoMeshFull->getIndexCount());
 
-	// Step 9: Render the clouds with the applied shader.
-	//cloudsShader->render(renderer->getDeviceContext(), cloudsPlane->getIndexCount());
-
-	// Step 10: Restore the render states for subsequent rendering.
-	renderer->setFaceCulling(D3D11_CULL_BACK);  // Enable back face culling for future objects.
-	renderer->setZBuffer(true);  // Re-enable Z-buffer for proper depth testing.
+	// Step 10: Reset the culling mode back
+	renderer->setFaceCulling(D3D11_CULL_BACK);
 }
 
 // Renders the skybox and updates the view based on the camera's position.
@@ -612,7 +704,7 @@ void App1::SkyBox() {
 
 // Linearly interpolate between two values, a and b, based on the interpolation factor t.
 // cppreference.com (n.d.) std::lerp - cppreference.com (online reference). Adapted from: https://en.cppreference.com/w/cpp/numeric/lerp.
-float lerp(const float& a, const float& b, float t) {
+static float lerp(const float& a, const float& b, float t) {
 	// Clamp t to the range [0, 1] to avoid going beyond the two values.
 	if (t <= 0) {
 		return a;  // If t is 0, return the starting value a.
@@ -644,7 +736,7 @@ void DayNightCycle(float& eTime, Light* light) {
 	else if (eTime <= dayHrs) {
 		// Calculate the interpolation factor (t) for the sun position
 		float t = eTime / dayHrs;
-		float minVal = 0.2f;    // Minimum intensity at sunrise
+		float minVal = 0.0f;    // Minimum intensity at sunrise
 		float maxVal = 1.0f;    // Maximum intensity at noon
 		// Calculate the intensity of the sunlight based on time of day
 		intensity[0] = minVal + (maxVal - minVal) * max(0.0f, sin((eTime / dayHrs) * XM_PI));
@@ -826,16 +918,35 @@ void App1::lighting(RenderTexture* renderTexture, bool clear) {
 			viewMatrix,         // View matrix for the camera's perspective.
 			projectionMatrix,   // Projection matrix for 3D scene rendering.
 			textureMgr->getTexture(L"perlinNoiseHeightMap"), // Height map texture for terrain.
-			textureMgr->getTexture(L"mountain diffuse"), // Diffuse texture for the terrain.
+			textureMgr->getTexture(L"Grass Tex"), // Grass texture for the terrain.
+		    textureMgr->getTexture(L"Rock Tex"), // Rock texture for terrain.
+		    textureMgr->getTexture(L"Snow Tex"), // Snow texture for terrain.
+		    grassTexVals, // Grass values for height based shading.
+		    rockTextVals,  // Rock values for height based shading.
+		    snowTexVals,     // Snow values for height based shading.
 			light,              // Lights to be applied.
 			lightType,          // Light types (e.g., directional, spotlight).
 			camera->getPosition(), // Camera position for lighting calculations.
-			params,
 			shadowMapsRSV       // Shadow maps for all lights.
 		);
 	lightShaderTess->render(renderer->getDeviceContext(), mainMesh->getIndexCount()); // Render with tessellated shader.
 
-	// Step 6: Render additional objects (cottage, sphere, spotlight model) with the lighting shader.
+	// Step 6: Render additional objects (cottage, coins, spotlight model) with the lighting shader and check for gameplay logic.
+	// Gameplay logic: check if all coins are collected and if the player is near the cottage.
+	if (allCollected && !gameFinish) {
+		camera->update();
+		XMFLOAT3 playerPos = camera->getPosition();
+		XMVECTOR pPos = XMLoadFloat3(&playerPos);
+		XMVECTOR cPos = XMLoadFloat3(&cottagePosition);
+		XMVECTOR diff = XMVectorSubtract(cPos, pPos);
+		XMVECTOR length = XMVector3Length(diff);
+		float distance;
+		XMStoreFloat(&distance, length);
+		if (distance < 4) {
+			gameFinish = true;
+		}
+	}
+	// Render cottage model.
 	cottageModel->sendData(renderer->getDeviceContext());
 	lightShader->setShaderParameters(
 		renderer->getDeviceContext(),
@@ -849,22 +960,7 @@ void App1::lighting(RenderTexture* renderTexture, bool clear) {
 		shadowMapsRSV
 	);
 	lightShader->render(renderer->getDeviceContext(), cottageModel->getIndexCount()); // Render cottage model.
-
-	//sphere->sendData(renderer->getDeviceContext());
-	//lightShader->setShaderParameters(
-	//	renderer->getDeviceContext(),
-	//	worldMatrix * XMMatrixScaling(sphereScale.x, sphereScale.y, sphereScale.z) * XMMatrixTranslation(spherePos.x, spherePos.y, spherePos.z),
-	//	viewMatrix,
-	//	projectionMatrix,
-	//	textureMgr->getTexture(L"default"), // Default texture for sphere.
-	//	light,
-	//	lightType,
-	//	camera->getPosition(),
-	//	shadowMapsRSV
-	//);
-	//lightShader->render(renderer->getDeviceContext(), sphere->getIndexCount()); // Render sphere model.
-
-	// Step 7: Render spotlight model.
+	// Render spotlight model.
 	spotlightModel->sendData(renderer->getDeviceContext());
 	lightShader->setShaderParameters(
 		renderer->getDeviceContext(),
@@ -878,6 +974,38 @@ void App1::lighting(RenderTexture* renderTexture, bool clear) {
 		shadowMapsRSV
 	);
 	lightShader->render(renderer->getDeviceContext(), spotlightModel->getIndexCount()); // Render spotlight model.
+	// Render the coins based on their collection state and positions.
+	for (int i = 0; i < 5; i++) {
+		camera->update();
+		XMFLOAT3 playerPos = camera->getPosition();
+		float height = perlinNoiseTexture->GetHeightAt((int)(coinPositionsXZ[i].x - 1), (int)(coinPositionsXZ[i].y - 1));
+		XMFLOAT3 coinPos = XMFLOAT3(coinPositionsXZ[i].x, height, coinPositionsXZ[i].y);
+		XMVECTOR pPos = XMLoadFloat3(&playerPos);
+		XMVECTOR cPos = XMLoadFloat3(&coinPos);
+		XMVECTOR diff = XMVectorSubtract(cPos, pPos);
+		XMVECTOR length = XMVector3Length(diff);
+		float distance;
+		XMStoreFloat(&distance, length);
+		if (distance < 4 && !coinCollected[i]) {
+			coinCollected[i] = true;
+			colCoins++;
+			if (colCoins >= totCoins) {
+				allCollected = true;
+			}
+		}
+
+		if (!coinCollected[i]) {
+			coinModel->sendData(renderer->getDeviceContext());
+			textureShader->setShaderParameters(
+				renderer->getDeviceContext(),
+				worldMatrix * XMMatrixRotationY(2 * timeFloat) * XMMatrixTranslation(coinPositionsXZ[i].x, height, coinPositionsXZ[i].y),
+				viewMatrix,
+				projectionMatrix,
+				textureMgr->getTexture(L"Coin Tex") // Spotlight texture.
+			);
+			textureShader->render(renderer->getDeviceContext(), coinModel->getIndexCount()); // Render coin model.
+		}
+	}
 }
 
 // Render the depth information for shadows based on the light source(s).
@@ -903,14 +1031,10 @@ void App1::shadowDepth() {
 
 			// Render the main mesh with tessellation for the shadow map.
 			mainMesh->sendData(renderer->getDeviceContext(), D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
-			depthShaderTess->setShaderParametersTess(renderer->getDeviceContext(), worldMatrix, lightViewMatrix, lightOrthoMatrix, camera->getPosition(), textureMgr->getTexture(L"heightMap"));
+			depthShaderTess->setShaderParametersTess(renderer->getDeviceContext(), worldMatrix, lightViewMatrix, lightOrthoMatrix, camera->getPosition(), textureMgr->getTexture(L"perlinNoiseHeightMap"));
 			depthShaderTess->render(renderer->getDeviceContext(), mainMesh->getIndexCount());
 
-			// Render additional objects like the sphere, cottage, and spotlight model.
-			sphere->sendData(renderer->getDeviceContext());
-			depthShader->setShaderParameters(renderer->getDeviceContext(), worldMatrix * XMMatrixScaling(sphereScale.x, sphereScale.y, sphereScale.z) * XMMatrixTranslation(spherePos.x, spherePos.y, spherePos.z), lightViewMatrix, lightOrthoMatrix);
-			depthShader->render(renderer->getDeviceContext(), sphere->getIndexCount());
-
+			// Render additional objects like the cottage, and spotlight model.
 			cottageModel->sendData(renderer->getDeviceContext());
 			depthShader->setShaderParameters(renderer->getDeviceContext(), worldMatrix * XMMatrixRotationX(XM_PI / 2) * XMMatrixScaling(1, .4, .75) * XMMatrixTranslation(cottagePosition.x, cottagePosition.y, cottagePosition.z), lightViewMatrix, lightOrthoMatrix);
 			depthShader->render(renderer->getDeviceContext(), cottageModel->getIndexCount());
@@ -928,14 +1052,10 @@ void App1::shadowDepth() {
 
 			// Render the main mesh with tessellation for the shadow map.
 			mainMesh->sendData(renderer->getDeviceContext(), D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
-			depthShaderTess->setShaderParametersTess(renderer->getDeviceContext(), worldMatrix, lightViewMatrix, lightProjectionMatrix, camera->getPosition(), textureMgr->getTexture(L"heightMap"));
+			depthShaderTess->setShaderParametersTess(renderer->getDeviceContext(), worldMatrix, lightViewMatrix, lightProjectionMatrix, camera->getPosition(), textureMgr->getTexture(L"perlinNoiseHeightMap"));
 			depthShaderTess->render(renderer->getDeviceContext(), mainMesh->getIndexCount());
 
-			// Render additional objects (sphere, cottage, and spotlight model) for the shadow map.
-			sphere->sendData(renderer->getDeviceContext());
-			depthShader->setShaderParameters(renderer->getDeviceContext(), worldMatrix * XMMatrixScaling(sphereScale.x, sphereScale.y, sphereScale.z) * XMMatrixTranslation(spherePos.x, spherePos.y, spherePos.z), lightViewMatrix, lightProjectionMatrix);
-			depthShader->render(renderer->getDeviceContext(), sphere->getIndexCount());
-
+			// Render additional objects (cottage, and spotlight model) for the shadow map.
 			cottageModel->sendData(renderer->getDeviceContext());
 			depthShader->setShaderParameters(renderer->getDeviceContext(), worldMatrix * XMMatrixRotationX(XM_PI / 2) * XMMatrixScaling(1, .4, .75) * XMMatrixTranslation(cottagePosition.x, cottagePosition.y, cottagePosition.z), lightViewMatrix, lightProjectionMatrix);
 			depthShader->render(renderer->getDeviceContext(), cottageModel->getIndexCount());
@@ -1208,10 +1328,10 @@ void App1::BloomSunSphere() {
 	}
 
 	// Step 3: Blend the blurred sun sphere with the color-graded scene.
-	// Inputs: RenderTextureSource (source/raw scene)
+	// Inputs: renderTextureCloudBlended (source/raw scene)
 	//         RenderTextureSunSphere[12] (final blurred sun sphere)
 	// Output: RenderTextureSunSphere[13] (blended result)
-	Blend(renderer, camera, orthoMeshFull, blendShader, renderTextureSource, renderTextureSunSphere[12], renderTextureSunSphere[13]);
+	Blend(renderer, camera, orthoMeshFull, blendShader, renderTextureCloudBlended, renderTextureSunSphere[12], renderTextureSunSphere[13]);
 }
 
 // Perform post-processing steps including bloom, sun sphere rendering, and blending.
@@ -1238,7 +1358,7 @@ void App1::postProcessing() {
 }
 
 // Perform the final rendering pass, displaying the processed or raw scene onto the screen.
-void App1::finalRender() {
+void App1::finalRender(RenderTexture* renderTexture) {
 	// Step 1: Disable the Z-buffer for rendering the ortho mesh.
 	// This ensures the ortho mesh is rendered without depth testing.
 	renderer->setZBuffer(false);
@@ -1270,20 +1390,20 @@ void App1::finalRender() {
 		// Send the full-screen ortho mesh data to the GPU.
 		orthoMeshFull->sendData(renderer->getDeviceContext());
 
-		// Set shader parameters with the raw render texture (renderTextureSource).
+		// Set shader parameters with the raw render texture (passed argument).
 		textureShader->setShaderParameters(
 			renderer->getDeviceContext(),
 			worldMatrix,
 			orthoViewMatrix,
 			orthoMatrix,
-			renderTextureSource->getShaderResourceView()
+			renderTexture->getShaderResourceView()
 		);
 
 		// Render the ortho mesh with the raw texture.
 		textureShader->render(renderer->getDeviceContext(), orthoMeshFull->getIndexCount());
 	}
 
-	// Step 5: Re-enable the Z-buffer for subsequent rendering passes.
+	// Step 5: Re-enable the Z-buffer for subsequent rendering passes, if any.
 	renderer->setZBuffer(true);
 }
 
@@ -1310,26 +1430,73 @@ void App1::gui() {
 	ImGui::Checkbox("Wireframe mode", &wireframeToggle);
 	ImGui::End();
 
-	ImGui::Begin("Perlin Params");
-	ImGui::SliderFloat3("Perlin parameters", (float*)&params, -100, 100, "%.2f");
-	generateMap = ImGui::Button("Generate perlin map");
-	if (generateMap) {
-		perlinNoiseTexture->GeneratePerlinNoiseTexture(renderer->getDevice(), textureMgr);
-		generateMap = false;
-		call++;
-		perlinNoiseTexName = L"perlinNoiseHeightMap" + std::to_wstring(call);
+	// Step 4: Gameplay insttruction window
+	ImGui::SetNextWindowPos(ImVec2(topLeft.x + 150, topLeft.y + 150), ImGuiCond_Always);
+	ImGui::Begin("Game", nullptr, ImGuiWindowFlags_NoCollapse);
+	if (!allCollected) {
+		ImGui::Text("Use \"W A S D\" to Move!\nHold RMB and use mouse to Look Around!");
+		ImGui::Text("Collect all the coins: %d/%d", colCoins, totCoins);
 	}
-	smooth = ImGui::Button("Smooth Height Map");
-	if (smooth) {
-		perlinNoiseTexture->SmoothHeightMap(renderer->getDevice(), textureMgr);
+	else if (!gameFinish) {
+		ImGui::Text("Use \"W A S D\" to Move!\nHold RMB and use mouse to Look Around!");
+		ImGui::Text("All coins are collected, now go to the House.");
+	}
+	else {
+		ImGui::Text("Game finished!\nEnjoy the scenery.");
 	}
 	ImGui::End();
 
-	// Step 4: Debug Mode UI.
+	// Step 5: Debug Mode UI.
 	if (debugBool) {
 		ImGui::SetNextWindowPos(debugPos, ImGuiCond_Always);
 		ImGui::Begin("Debug Window");
-		ImGui::Text("Pausing time might help with seeing changes");
+		ImGui::Text("Pausing time or gravity might help with seeing changes");
+
+		// Cloud Controls
+		if (ImGui::CollapsingHeader("Clouds Controls")) {
+			XMFLOAT2 speed = XMFLOAT2(speedX, speedY);
+			ImGui::SliderFloat2("Cloud Speed (XY)", (float*)&speed, -10, 10, "%.3f");
+			speedX = speed.x; speedY = speed.y;
+			ImGui::SliderFloat("Gas Density", (float*)&gasDensity, 0, 1, "%.4f");
+			ImGui::SliderFloat("Raymarching Sample Nos", (float*)&sampleNumbers, 0, 1000, "%.0f");
+			ImGui::SliderFloat("\"sigma_a\" for the gas", (float*)&sigma_a, 0, 1, "%.4f");
+			ImGui::Text("Isotropy parameter for phase function\n 0 - isotropic\n<0 - backward bias\n>0 - forward bias");
+			ImGui::SliderFloat("g", (float*)&g, -1, 1, "%.4f");
+		}
+
+		// Texturing controls
+		if (ImGui::CollapsingHeader("Terrain Texturing Controls")) {
+			ImGui::SliderFloat2("Grass texturing\nX - min height val\nY - max height val", (float*)&grassTexVals, -20, 20, "%.2f");
+			ImGui::SliderFloat2("Rock texturing\nX - min height val\nY - max height val", (float*)&rockTextVals, -20, 20, "%.2f");
+			ImGui::SliderFloat2("Snow texturing\nX - min height val\nY - max height val", (float*)&snowTexVals, -20, 20, "%.2f");
+		}
+
+		// Perlin Noise controls
+		if (ImGui::CollapsingHeader("Perlin Noise Height Map")) {
+			ImGui::SliderFloat("HM Frequency:", (float*)&paramsHM.x, -20, 20, "%.3f");
+			ImGui::SliderFloat("HM Amplitude:", (float*)&paramsHM.y, -40, 40, "%.1f");
+			generateHM = ImGui::Button("Generate perlin map");
+			if (generateHM) {
+				perlinNoiseTexture->GeneratePerlinNoiseTextureHM(renderer->getDevice(), textureMgr, paramsHM.x, paramsHM.y);
+				camera->noiseData = perlinNoiseTexture->GetHeightDataRaw();
+				camera->size = perlinNoiseTexture->GetTerrainSize();
+				generateHM = false;
+			}
+			smooth = ImGui::Button("Smooth Height Map");
+			if (smooth) {
+				perlinNoiseTexture->SmoothHeightMap(renderer->getDevice(), textureMgr);
+				camera->noiseData = perlinNoiseTexture->GetHeightDataRaw();
+				camera->size = perlinNoiseTexture->GetTerrainSize();
+			}
+		}
+		if (ImGui::CollapsingHeader("Perlin Noise Density Map")) {
+			ImGui::SliderFloat("DM Frequency:", (float*)&paramsDMFreq, -2, 2, "% .3f");
+			generateDM = ImGui::Button("Generate density map");
+			if (generateDM) {
+				perlinNoiseTexture->GeneratePerlinNoiseTextureDM(renderer->getDevice(), textureMgr, paramsDMFreq);
+				generateDM = false;
+			}
+		}
 
 		// Directional Light Controls.
 		if (ImGui::CollapsingHeader("Directional Light")) {
@@ -1353,9 +1520,6 @@ void App1::gui() {
 		if (ImGui::CollapsingHeader("Cottage")) {
 			ImGui::SliderFloat3("Position Cottage", (float*)&cottagePosition, -100, 100, "%.2f");
 		}
-		if (ImGui::CollapsingHeader("Sphere")) {
-			ImGui::SliderFloat3("Position Sphere", (float*)&spherePos, -100, 100, "%.2f");
-		}
 		if (ImGui::CollapsingHeader("Spotlight Model")) {
 			ImGui::SliderFloat3("Position Spotlight Model", (float*)&spotlightModelPosition, -100, 100, "%.2f");
 		}
@@ -1367,10 +1531,10 @@ void App1::gui() {
 		ImGui::End();
 	}
 
-	// Step 5: Update Lights Data.
+	// Step 6: Update Lights Data.
 	UpdateLights();
 
-	// Step 6: Main UI Elements.
+	// Step 7: Main UI Elements.
 
 	// Statistics Window.
 	ImGui::SetNextWindowPos(topRight, ImGuiCond_Always);
@@ -1434,13 +1598,24 @@ void App1::gui() {
 		ImGui::Checkbox("Shadows?", &shadowBool);
 		ImGui::Checkbox("Post-Processing?", &postProcessingBool);
 		ImGui::Checkbox("Time?", &timeBool);
+		ImGui::Checkbox("Gravity?", &gravity);
+		ImGui::Checkbox("Flight Mode? (Use Q and E)", &camFlightMode);
+		if (camera->flightMode != camFlightMode)
+		{
+			if (camFlightMode)
+				camera->flightMode = camFlightMode;
+			else {
+				camera->flightMode = camFlightMode;
+				camera->setPosition(28, 10, 27);
+			}
+		}
 		ImGui::Unindent();
 	}
 
 	// Reset Time Section.
 	if (ImGui::CollapsingHeader("Reset Time")) {
 		ImGui::Indent();
-		ImGui::Checkbox("Reset?", &resetBool);
+		resetBool = ImGui::Button("Reset?");
 		ImGui::Unindent();
 	}
 
@@ -1459,13 +1634,16 @@ void App1::gui() {
 	ImGui::PopStyleColor(); // Reset window background transparency.
 	ImGui::End(); // End of Main Window.
 
-	// Step 7: Render the ImGui UI.
+	// Step 8: Render the ImGui UI.
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
 
 // Update the properties of all lights in the scene dynamically.
 void App1::UpdateLights() {
+	// Update the position of the spotlight based on the spotlight model.
+	position[1] = XMFLOAT4(spotlightModelPosition.x, spotlightModelPosition.y + 2.1f, spotlightModelPosition.z + 1.f, 1.f);
+
 	// Clamp intensity values to ensure they stay within the valid range [0.0, 1.0].
 	for (int i = 0; i < lightSize; i++) {
 		intensity[i] = std::clamp(intensity[i], 0.0f, 1.0f);

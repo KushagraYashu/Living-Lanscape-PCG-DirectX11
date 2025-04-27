@@ -14,33 +14,36 @@ FPCamera::FPCamera(Input* in, int width, int height, HWND hnd)
 void FPCamera::move(float dt)
 {
 	setFrameTime(dt);
+	/*XMFLOAT3 camPos = getPosition();
+	XMFLOAT2 gridPos = XMFLOAT2(camPos.x - 1, camPos.z - 1);
+	setPosition(camPos.x, noiseData[(gridPos.y * size) + gridPos.y], camPos.z);*/
 	// Handle the input.
 	if (input->isKeyDown('W'))
 	{
 		// forward
-		moveForward();
+		moveForward(noiseData, size, flightMode);
 	}
 	if (input->isKeyDown('S'))
 	{
 		// back
-		moveBackward();
+		moveBackward(noiseData, size, flightMode);
 	}
 	if (input->isKeyDown('A'))
 	{
 		// Strafe Left
-		strafeLeft();
+		strafeLeft(noiseData, size, flightMode);
 	}
 	if (input->isKeyDown('D'))
 	{
 		// Strafe Right
-		strafeRight();
+		strafeRight(noiseData, size, flightMode);
 	}
-	if (input->isKeyDown('Q'))
+	if (input->isKeyDown('Q') && flightMode)
 	{
 		// Down
 		moveDownward();
 	}
-	if (input->isKeyDown('E'))
+	if (input->isKeyDown('E') && flightMode)
 	{
 		// Up
 		moveUpward();

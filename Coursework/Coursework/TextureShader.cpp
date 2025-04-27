@@ -62,9 +62,9 @@ void TextureShader::initShader(const wchar_t* vsFilename, const wchar_t* psFilen
 
     // Create a texture sampler state description.
     samplerDesc.Filter = D3D11_FILTER_ANISOTROPIC;
-    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
-    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
-    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
     samplerDesc.MipLODBias = 0.0f;
     samplerDesc.MaxAnisotropy = 1;
     samplerDesc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
@@ -99,7 +99,7 @@ void TextureShader::setShaderParameters(ID3D11DeviceContext* deviceContext, cons
 
     // Set the blend state
     float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    deviceContext->OMSetBlendState(blendState, blendFactor, 0xFFFFFFFF);
+    //deviceContext->OMSetBlendState(blendState, blendFactor, 0xFFFFFFFF);
 
     // Set shader texture and sampler resource in the pixel shader
     deviceContext->PSSetShaderResources(0, 1, &texture);

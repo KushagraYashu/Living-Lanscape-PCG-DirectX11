@@ -94,37 +94,109 @@ XMMATRIX Camera::getOrthoViewMatrix()
 	return orthoMatrix;
 }
 
-void Camera::moveForward()
-{
-	float radians;
+XMMATRIX Camera::getProjectionMatrix(float fovRad, float screenNear, float screenFar, float aspectRatio) {
+	XMMATRIX projectionMatrix = XMMatrixPerspectiveFovLH(
+		fovRad, // FOV
+		aspectRatio,
+		screenNear,
+		screenFar
+	);
 
-	// Update the forward movement based on the frame time
+	return projectionMatrix;
+}
+
+float Camera::lerp(const float& a, const float& b, float t){
+	// Clamp t to the range [0, 1] to avoid going beyond the two values.
+	if (t <= 0) {
+		return a;  // If t is 0, return the starting value a.
+	}
+	if (t >= 1) {
+		return b;  // If t is 1, return the ending value b.
+	}
+	return a + t * (b - a);  // Linearly interpolate between a and b.
+}
+
+void Camera::moveForward(std::vector<float> heightData, int size, bool flightMode)
+{
+	float radians = rotation.y * 0.0174532f;
+
+	// Predict next position
 	speed = frameTime * 10.f;
-	
-	// Convert degrees to radians.
-	radians = rotation.y * 0.0174532f;
+	XMFLOAT3 predPos = position;
+	predPos.x += sinf(radians) * speed;
+	predPos.z += cosf(radians) * speed;
 
-	// Update the position.
-	position.x += sinf(radians) * speed;
-	position.z += cosf(radians) * speed;
+	if (!flightMode) {
+		// Terrain boundaries
+		bool insideBounds =
+			predPos.x >= 0 && predPos.x < (float)(size - 1) &&
+			predPos.z >= 0 && predPos.z < (float)(size - 1);
+
+		if (insideBounds)
+		{
+			// Safe to move — update position
+			int gridX = (int)predPos.x;
+			int gridZ = (int)predPos.z;
+
+			// Sample terrain height
+			float terrainHeight = heightData[(gridZ * size) + gridX];
+
+			// Move XZ
+			position.x = predPos.x;
+			position.z = predPos.z;
+
+			// Smooth Y interpolation
+			float targetY = terrainHeight + 3.0f;
+			float smoothing = 0.05f;
+			position.y = lerp(position.y, targetY, smoothing);
+		}
+	}
+	else {
+		position.x = predPos.x;
+		position.z = predPos.z;
+	}
 }
 
-
-void Camera::moveBackward()
+void Camera::moveBackward(std::vector<float> heightData, int size, bool flightMode)
 {
-	float radians;
+	float radians = rotation.y * 0.0174532f;
 
-	// Update the backward movement based on the frame time
-	speed = frameTime * 10.f;// *0.5f;
+	// Predict next position
+	speed = frameTime * 10.f;
+	XMFLOAT3 predPos = position;
+	predPos.x -= sinf(radians) * speed;
+	predPos.z -= cosf(radians) * speed;
 
-	// Convert degrees to radians.
-	radians = rotation.y * 0.0174532f;
+	if (!flightMode) {
+		// Terrain boundaries
+		bool insideBounds =
+			predPos.x >= 0 && predPos.x < (float)(size - 1) &&
+			predPos.z >= 0 && predPos.z < (float)(size - 1);
 
-	// Update the position.
-	position.x-= sinf(radians) * speed;
-	position.z -= cosf(radians) * speed;
+		if (insideBounds)
+		{
+			// Safe to move — update position
+			int gridX = (int)predPos.x;
+			int gridZ = (int)predPos.z;
+
+			// Sample terrain height
+			float terrainHeight = heightData[(gridZ * size) + gridX];
+
+			// Move XZ
+			position.x = predPos.x;
+			position.z = predPos.z;
+
+			// Smooth Y interpolation
+			float targetY = terrainHeight + 3.0f;
+			float smoothing = 0.05f;
+			position.y = lerp(position.y, targetY, smoothing);
+		}
+	}
+	else {
+		position.x = predPos.x;
+		position.z = predPos.z;
+	}
 }
-
 
 void Camera::moveUpward()
 {
@@ -219,33 +291,85 @@ void Camera::turn(int x, int y)
 	rotation.x += (float)y/lookSpeed;// m_speed * y;
 }
 
-void Camera::strafeRight()
+void Camera::strafeRight(std::vector<float> heightData, int size, bool flightMode)
 {
-	float radians;
+	float radians = rotation.y * 0.0174532f;
 
-	// Update the forward movement based on the frame time
-	speed = frameTime * 5.f;
+	// Predict next position
+	speed = frameTime * 10.f;
+	XMFLOAT3 predPos = position;
+	predPos.x += cosf(radians) * speed;
+	predPos.z -= sinf(radians) * speed;
 
-	// Convert degrees to radians.
-	radians = rotation.y * 0.0174532f;
+	if (!flightMode) {
+		// Terrain boundaries
+		bool insideBounds =
+			predPos.x >= 0 && predPos.x < (float)(size - 1) &&
+			predPos.z >= 0 && predPos.z < (float)(size - 1);
 
-	// Update the position.
-	position.z -= sinf(radians) * speed;
-	position.x += cosf(radians) * speed;
+		if (insideBounds)
+		{
+			// Safe to move — update position
+			int gridX = (int)predPos.x;
+			int gridZ = (int)predPos.z;
 
+			// Sample terrain height
+			float terrainHeight = heightData[(gridZ * size) + gridX];
+
+			// Move XZ
+			position.x = predPos.x;
+			position.z = predPos.z;
+
+			// Smooth Y interpolation
+			float targetY = terrainHeight + 3.0f;
+			float smoothing = 0.05f;
+			position.y = lerp(position.y, targetY, smoothing);
+		}
+	}
+	else {
+		position.x = predPos.x;
+		position.z = predPos.z;
+	}
 }
 
-void Camera::strafeLeft()
+void Camera::strafeLeft(std::vector<float> heightData, int size, bool flightMode)
 {
-	float radians;
+	float radians = rotation.y * 0.0174532f;
 
-	// Update the forward movement based on the frame time
-	speed = frameTime * 5.f;
+	// Predict next position
+	speed = frameTime * 10.f;
+	XMFLOAT3 predPos = position;
+	XMFLOAT3 right = { cosf(radians), 0, sinf(radians) };
+	predPos.x -= cosf(radians) * speed;
+	predPos.z += sinf(radians) * speed;
 
-	// Convert degrees to radians.
-	radians = rotation.y * 0.0174532f;
+	if (!flightMode) {
+		// Terrain boundaries
+		bool insideBounds =
+			predPos.x >= 0 && predPos.x < (float)(size - 1) &&
+			predPos.z >= 0 && predPos.z < (float)(size - 1);
 
-	// Update the position.
-	position.z += sinf(radians) * speed;
-	position.x -= cosf(radians) * speed;
+		if (insideBounds)
+		{
+			// Safe to move — update position
+			int gridX = (int)predPos.x;
+			int gridZ = (int)predPos.z;
+
+			// Sample terrain height
+			float terrainHeight = heightData[(gridZ * size) + gridX];
+
+			// Move XZ
+			position.x = predPos.x;
+			position.z = predPos.z;
+
+			// Smooth Y interpolation
+			float targetY = terrainHeight + 3.0f;
+			float smoothing = 0.05f;
+			position.y = lerp(position.y, targetY, smoothing);
+		}
+	}
+	else {
+		position.x = predPos.x;
+		position.z = predPos.z;
+	}
 }

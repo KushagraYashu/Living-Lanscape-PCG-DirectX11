@@ -81,7 +81,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <TargetName>_Living Landscape by Kushagra</TargetName>
+    <TargetName>Living Landscape II by Kushagra</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -178,7 +178,6 @@
     <ClCompile Include="App1.cpp" />
     <ClCompile Include="BlendShader.cpp" />
     <ClCompile Include="BrightnessFilterShader.cpp" />
-    <ClCompile Include="CloudSphere.cpp" />
     <ClCompile Include="CloudsShader.cpp" />
     <ClCompile Include="ColorGradingShader.cpp" />
     <ClCompile Include="depth.cpp" />
@@ -189,14 +188,12 @@
     <ClCompile Include="SimplexNoise.cpp" />
     <ClCompile Include="SkyDomeShader.cpp" />
     <ClCompile Include="SunShader.cpp" />
-    <ClCompile Include="TerrainHeightData.cpp" />
     <ClCompile Include="TextureShader.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="App1.h" />
     <ClInclude Include="BlendShader.h" />
     <ClInclude Include="BrightnessFilterShader.h" />
-    <ClInclude Include="CloudSphere.h" />
     <ClInclude Include="CloudsShader.h" />
     <ClInclude Include="ColorGradingShader.h" />
     <ClInclude Include="depth.h" />
@@ -206,7 +203,6 @@
     <ClInclude Include="SimplexNoise.h" />
     <ClInclude Include="SkyDomeShader.h" />
     <ClInclude Include="SunShader.h" />
-    <ClInclude Include="TerrainHeightData.h" />
     <ClInclude Include="TextureShader.h" />
   </ItemGroup>
   <ItemGroup>
@@ -225,6 +221,12 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+    </FxCompile>
+    <FxCompile Include="CloudBlendShader_ps.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
     </FxCompile>
     <FxCompile Include="CloudsShader_ps.hlsl">
@@ -280,6 +282,12 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+    </FxCompile>
+    <FxCompile Include="linearDepth_ps.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
     </FxCompile>
     <FxCompile Include="SkyDomeShader_ps.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>

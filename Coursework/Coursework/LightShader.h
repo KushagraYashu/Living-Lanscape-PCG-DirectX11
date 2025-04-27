@@ -2,8 +2,6 @@
 
 #include "DXF.h" // Include DirectX Framework for base shader functionalities
 
-#include "TerrainHeightData.h"
-
 // Define the number of lights supported by the light shader
 static const int lightSizeLightShader = 2;
 
@@ -31,6 +29,13 @@ private:
         XMFLOAT4 params;
     };
 
+    struct TexturingHeights {
+        XMFLOAT2 grassHeights;
+        XMFLOAT2 rockHeights;
+        XMFLOAT2 snowHeights;
+        XMFLOAT2 padding;
+    };
+
 public:
     // Constructor for tessellated shaders
     LightShader(ID3D11Device* device, HWND hwnd, const wchar_t* vsFileName, const wchar_t* hsFileName, const wchar_t* dsFileName, const wchar_t* psFileName);
@@ -45,11 +50,15 @@ public:
     void setShaderParametersTess(ID3D11DeviceContext* deviceContext,
         const XMMATRIX& world, const XMMATRIX& view, const XMMATRIX& projection,
         ID3D11ShaderResourceView* heightMap,
-        ID3D11ShaderResourceView* texture,
+        ID3D11ShaderResourceView* textureGrass, 
+        ID3D11ShaderResourceView* textureRock, 
+        ID3D11ShaderResourceView* textureSnow, 
+        XMFLOAT2 grassHeights, 
+        XMFLOAT2 rockHeights, 
+        XMFLOAT2 snowHeights,
         Light* light[lightSizeLightShader],
         XMFLOAT4 lightType[lightSizeLightShader],
         XMFLOAT3 camPos,
-        XMFLOAT3 params,
         ID3D11ShaderResourceView* depthMap[lightSizeLightShader]);
 
     // Set shader parameters for non-tessellated rendering
@@ -72,6 +81,7 @@ private:
     ID3D11Buffer* matrixBuffer;       // Buffer for storing transformation matrices
     ID3D11Buffer* lightBuffer;        // Buffer for storing light data
     ID3D11Buffer* camBuffer;          // Buffer for storing camera data
+    ID3D11Buffer* texHeightBuffer;    // Buffer for storing texturing height data
 
     // Sampler state for texture sampling
     ID3D11SamplerState* sampleState;

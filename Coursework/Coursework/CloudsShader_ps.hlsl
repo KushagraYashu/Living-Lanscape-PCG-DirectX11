@@ -1,22 +1,43 @@
 // Texture and sampler for applying textures
-Texture2D texture0 : register(t0); // The texture to apply to the geometry
+Texture3D texture0 : register(t0); // The density texture
+Texture2D depthTex : register(t1); // The linear depth texture
 SamplerState Sampler0 : register(s0); // The sampler state for the texture
 
-// Constant buffer for camera position and ray intersection test
+// Constant buffer for camera position
 cbuffer CameraBuffer : register(b0)
 {
     float4 camPos;
 }
 
-cbuffer SphereBuffer : register(b1)
+// Constant buffer for cloud box size and centre
+cbuffer CloudBoxBuffer : register(b1)
 {
-    float4 sphereCentreAndRadius;
+    float4 centre;
+    float4 halfSize;
 }
 
+// Constant buffer for light properties
 cbuffer LightBuffer : register(b2)
 {
     float4 lightDirectionAndSigma;
-    float4 lightColor;
+    float3 lightColor;
+    float randVal;
+}
+
+// Constant buffer for scrolling speed and time
+cbuffer ScrollBuffer : register(b3)
+{
+    float2 scrollSpeed;
+    float time;
+    float padding;
+}
+
+// Constant buffer for gas properties
+cbuffer GasPropBuffer : register(b4)
+{
+    float4 gasColour;
+    float3 sA_SamNo_G; // .x is sigma_a, .y is total sample numbers in ray marching, .z is phase function parameter
+    float gasDensity;
 }
 
 // Input structure containing vertex attributes
@@ -25,132 +46,132 @@ struct InputType
     float4 position : SV_POSITION; // Vertex position
     float2 tex : TEXCOORD0; // Texture coordinates for mapping the texture
     float3 normal : NORMAL; // Normal vector for lighting (not used here, but passed through)
-    float4 worldPos : POSITION;
+    float4 worldPos : POSITION; // World position of the pixel
 };
 
-// Computes intersection of a ray with a sphere
-bool intersectSphere(float3 ro, float3 rd, out float t0, out float t1)
+// Computes intersection of a ray with a box
+bool intersectAABB(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxMax, out float t0, out float t1)
 {
-    float3 sphere_center = sphereCentreAndRadius.xyz;
-    float sphere_radius = sphereCentreAndRadius.w;
-    
-    
-    float3 L = sphere_center - ro;
-    float tca = dot(L, rd);
-    
-    float dSq = dot(L, L) - tca * tca;
-    float rSq = sphere_radius * sphere_radius;
-    
-    if (dSq > rSq)
-        return false;
+    float3 tMin = (boxMin - rayOrigin) / rayDir;
+    float3 tMax = (boxMax - rayOrigin) / rayDir;
 
-    float thc = sqrt(rSq - dSq);
-    
-    
-    t0 = tca - thc;
-    t1 = tca + thc;
-    
-    if (dot(L, L) < rSq)
-    {
-        t0 = 0;
-    }
+    float3 t1s = min(tMin, tMax); // entry points
+    float3 t2s = max(tMin, tMax); // exit points
 
-    return true;
+    t0 = max(max(t1s.x, t1s.y), t1s.z);
+    t1 = min(min(t2s.x, t2s.y), t2s.z);
+
+    return t1 >= max(t0, 0.0);
 }
 
-static const float4 backgroundColor = float4(0, 0, 0, 0);
-static const float4 gasColor = float4(1, 1, 1, 1);
-static const float sigma_a = .4f; //the higher, the more absorption (if want thick gas, increase the value)
+// the Henyey-Greenstein phase function (isotropy depends on the value of g)
+float HGPhaseFunc(float g, float cos_theta)
+{
+    float denom = 1 + g * g - 2 * g * cos_theta;
+    return 1 / (4 * 3.14159265358979323846) * (1 - g * g) / (denom * sqrt(denom));
+}
 
-static const float sampleNumbers = 200;
-
+// black background color for blending
+static const float4 backgroundColor = float4(0, 0., 0., 1);
 
 // Main pixel shader function
 float4 main(InputType input) : SV_TARGET
 {
-    float3 rayDir = normalize(input.worldPos - camPos);
-    float3 rayOrigin = camPos;
+    float4 finalColor = float4(0, 0, 0, 0); // Final color
+    
+    float3 rayDir = normalize(input.worldPos.xyz - camPos.xyz); // ray direction
+    float3 rayOrigin = camPos;  // ray start position
+    
+    float3 boxMin = centre - halfSize;
+    float3 boxMax = centre + halfSize;
 
     float t0, t1;
-    if (!intersectSphere(rayOrigin, rayDir, t0, t1))
+    if (!intersectAABB(rayOrigin, rayDir, boxMin, boxMax, t0, t1))
     {
         return backgroundColor; // No intersection, return background
     }
 
-    float3 entryPoint = rayOrigin + t0 * rayDir;
-    float3 exitPoint = rayOrigin + t1 * rayDir;
+    // Depth test
+    int width, height;
+    depthTex.GetDimensions(width, height);
+    float2 samplingPos = input.position.xy / float2(width, height);
+    float zFar = 200;
+    float depth = depthTex.Sample(Sampler0, samplingPos).r;
+    depth *= zFar;
+    if (t0 > depth)
+    {
+        return backgroundColor; // If something exists between the cloud and camera, return
+    }
+    t1 = min(t1, depth); // Adjusting exit parameter based on depth
 
+    // Calculating entry and exit points
+    float3 entryPoint;
+    if (t0 >= 0)    // The ray starts out of the cloud box
+    {
+        entryPoint = rayOrigin + t0 * rayDir;
+    }
+    else    // The ray starts from inside the clouds (camera is in cloud box)
+    {
+        entryPoint = rayOrigin;
+        t0 = 0; // This makes sure the calculations are correct in terms of the distance
+    }
+    float3 exitPoint = rayOrigin + t1 * rayDir;
     float distance = length(exitPoint - entryPoint);
     
     //In-Scattering
-    float stepSize = distance / sampleNumbers;
-    
-        //ray-marching?
+    float stepSize = distance / sA_SamNo_G.y;
     float3 lightDir = -lightDirectionAndSigma.xyz;
     float sigma_s = lightDirectionAndSigma.w;
-    float density = 1.f; //higher the value, the thicker the gas
+    float density = gasDensity; //higher the value, the thicker the gas
     float transparency = 1;
     float4 result = float4(0, 0, 0, 0);
-    for (int i = 0; i < sampleNumbers; i++)
+    float cos_thetha;
+    float rho;
+    for (int i = 0; i < sA_SamNo_G.y; i++)
     {
-        float t = t0 + stepSize * (i + 0.5); //parameter 't' to get the mid point of the current sample (ray marching box) (+0.5 is done to get the centre)
-
-        float3 sampleMidPoint = rayOrigin + t * rayDir;
+        float t = t0 + stepSize * (i + randVal); //parameter 't' to get a random point of the current sample (ray marching box)
+        float3 samplePoint = rayOrigin + t * rayDir;
         
-        float sampleTransparency = exp(-stepSize * (density) * (sigma_a + sigma_s)); //applying beer's law to the sample hence using stepSize
+        // evaluating the perlin value
+        float3 uvw = (samplePoint - boxMin) / (boxMax - boxMin);
+        uvw += float3(scrollSpeed.x * time, 0, scrollSpeed.y * time);
+        float perlinVal = texture0.SampleLevel(Sampler0, uvw, 0).r;
+        
+        // Combined density
+        rho = density * (perlinVal * 0.5 + 0.5);
+        
+        // Scattering coefficient (used in Beer's law)
+        float _scattCoeff = (sA_SamNo_G.x + sigma_s) * rho;
+        
+        float sampleTransparency = exp(-stepSize * _scattCoeff); //applying beer's law to the sample hence using stepSize
         
         transparency *= sampleTransparency; //integrating it with existing transparency
         
-        if (transparency < 0.01) //forward marching, we dont want to go near to 0 (its just not worth it)
+        if (transparency < 0.001) //forward marching, we dont want to go near to 0 (its just not worth it)
         {
-            transparency = 0.01f;
-            //break;
+            transparency = 0.001f;
+            break;
         }
         
-        //Now in-scattering (check with sphere and do shit)
-        float light_t0, light_t1; //t0 would always be 0 since the ray starts from inside the sphere
-        if (intersectSphere(sampleMidPoint, lightDir, light_t0, light_t1))
+        //Now in-scattering
+        float light_t0, light_t1; //t0 would always be 0 since this ray starts from inside the sphere
+        if (intersectAABB(samplePoint, lightDir, boxMin, boxMax, light_t0, light_t1))
         {
-            float lightFalloffFromAbsorption = exp(-light_t1 * (density) * (sigma_a + sigma_s)); //beer's law to the ray coming from the light source to the sample
-            result += gasColor * float4(lightColor.rgb * 10 /*10 is intensity (sort of)*/, 1) * lightFalloffFromAbsorption * sigma_s * (density) * stepSize; //combining all the results
+            cos_thetha = dot(normalize(lightDir), normalize(-rayDir)); // cos_thetha for phase function
+            
+            float lightFalloffFromAbsorption = exp(-light_t1 * _scattCoeff); //beer's law to the ray coming from the light source to the sample
+            
+            // Integrating all parameters
+            result += transparency * HGPhaseFunc(sA_SamNo_G.z, cos_thetha) * float4(max(saturate(lightColor.rgb * 15), 0.01), 1) * lightFalloffFromAbsorption * sigma_s * stepSize;
         }
-
     }
     
-    //return float4(transparency, transparency, transparency, 1);
-    
     // Final blend with background
-    float4 finalColor = (backgroundColor + result) * (1 / transparency);
+    finalColor.rgb = (backgroundColor.rgb * transparency) + result.rgb;
+    
+    // Gamma correction
     finalColor.rgb = pow(finalColor.rgb, 1 / 2.2);
-    return finalColor;
     
-    //scrolling clouds (texture)
-    //float4 colour; // Variable to store the texture color
-    //float2 scrollUV = input.tex; // Get the texture coordinates from the input
-
-    //// Apply scrolling effect by modifying the texture's x-coordinate based on the scroll speed
-    //scrollUV.x += scrollSpeed.y * scrollSpeed.x; // Horizontal scroll based on speed
-
-    //// Sample the texture at the modified coordinates
-    //colour = texture0.Sample(Sampler0, scrollUV);
-
-    //// Calculate the luminance of the texture color using a weighted sum of RGB channels
-    //float luminance = dot(colour.rgb, float3(0.299, 0.587, 0.114));
-
-    //// Calculate alpha based on the luminance
-    //float alpha = pow(luminance, 2.0);
-
-    //// Mix the original color with black based on the calculated alpha value
-    //float4 finalColour = lerp(float4(0, 0, 0, 0), colour, alpha);
-
-    //// Apply gamma correction to the final color to convert from linear to sRGB space
-    //finalColour.rgb = pow(finalColour.rgb, 1 / 2.2);
-
-    ////trying to attempt beer's law (volumetric rendering)
-    ////float sigma_a = 0.1;
-    ////float distance = 10;
-    ////float T = exp(-distance * sigma_a);
-    ////finalColour *= T;
-    
-    //return finalColour; // Return the final color to be rendered
+    // returning with final attenuation, it'd be useful in blending with other render texture
+    return float4(finalColor.rgb, transparency);
 }

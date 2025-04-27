@@ -32,20 +32,6 @@ struct InputType
 // Main function that processes the input vertex data and outputs a color
 float4 main(InputType input) : SV_TARGET
 {
-    float4 color;
-    color.r = heightMap.Sample(sampler0, input.tex.rg).r;
-    color.g = 0;
-    color.b = 0;
-    color.a = 1;
-    
-    //trying to attempt beer's law (volumetric rendering)
-    //float sigma_a = 0.1;
-    //float distance = 10;
-    //float T = exp(-distance * sigma_a);
-    //color = T * color;
-    
-    
-    return color;
     // Return a white color (opaque) as the output for this shader stage
     return float4(1.f, 1.f, 1.f, 1.f); // The output color of the pixel, white with full opacity
 }

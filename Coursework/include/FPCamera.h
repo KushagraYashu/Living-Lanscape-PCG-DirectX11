@@ -2,13 +2,16 @@
 
 #include "camera.h"
 #include "input.h"
-
+#include <vector>
 
 using namespace DirectX;
 
 class FPCamera : public Camera
 {
 public:
+	std::vector<float> noiseData;
+	int size;
+	bool flightMode = false;
 	/*void* operator new(size_t i)
 	{
 		return _mm_malloc(i, 16);

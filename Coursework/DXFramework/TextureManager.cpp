@@ -119,7 +119,7 @@ void TextureManager::generateTexture(ID3D11Device* device)
 void TextureManager::addDefaultTexture()
 {
 	//red color with very low alpha
-	static const uint32_t s_pixel = 0x110000FF;
+	static const uint32_t s_pixel = 0xFFFFFFFF;
 
 	D3D11_SUBRESOURCE_DATA initData = { &s_pixel, sizeof(uint32_t), 0 };
 

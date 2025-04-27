@@ -33,6 +33,12 @@ public:
     void setShaderParameters(ID3D11DeviceContext* deviceContext,
         const XMMATRIX& world, const XMMATRIX& view, const XMMATRIX& projection);
 
+    // Set shader parameters for linear depth of tessellated objects
+    void setShaderParametersLinearDepthTess(ID3D11DeviceContext* deviceContext, const XMMATRIX& worldMatrix, const XMMATRIX& viewMatrix, const XMMATRIX& projectionMatrix, XMFLOAT3 camPos, ID3D11ShaderResourceView* heightMap);
+
+    // Set shader parameters for linear depth of non-tessellated objects
+    void setShaderParametersLinearDepth(ID3D11DeviceContext* deviceContext, const XMMATRIX& worldMatrix, const XMMATRIX& viewMatrix, const XMMATRIX& projectionMatrix, XMFLOAT3 camPos);
+
 private:
     // Initialize the shader for tessellated rendering
     void initShader(const wchar_t* vsFilename, const wchar_t* hsFilename, const wchar_t* dsFilename, const wchar_t* psFilename);

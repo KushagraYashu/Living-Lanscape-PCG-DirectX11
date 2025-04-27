@@ -114,7 +114,7 @@ void System::initialiseWindows(int& screenWidth, int& screenHeight)
 	hinstance = GetModuleHandle(NULL);
 
 	// Give the application a name.
-	applicationName = L"Living Landscape by Kushagra";
+	applicationName = L"Living Landscape II by Kushagra";
 
 	// Setup the windows class with default settings.
 	wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;

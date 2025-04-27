@@ -54,16 +54,10 @@
     <ClCompile Include="SunShader.cpp">
       <Filter>Header Files\Header CPPs</Filter>
     </ClCompile>
-    <ClCompile Include="TerrainHeightData.cpp">
-      <Filter>Header Files\Header CPPs</Filter>
-    </ClCompile>
     <ClCompile Include="SimplexNoise.cpp">
       <Filter>Header Files\Header CPPs</Filter>
     </ClCompile>
     <ClCompile Include="PerlinNoiseTexture.cpp">
-      <Filter>Header Files\Header CPPs</Filter>
-    </ClCompile>
-    <ClCompile Include="CloudSphere.cpp">
       <Filter>Header Files\Header CPPs</Filter>
     </ClCompile>
   </ItemGroup>
@@ -101,16 +95,10 @@
     <ClInclude Include="SunShader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="TerrainHeightData.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="SimplexNoise.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="PerlinNoiseTexture.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="CloudSphere.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -176,6 +164,12 @@
       <Filter>Resource Files</Filter>
     </FxCompile>
     <FxCompile Include="SunBrightnessFilterShader_ps.hlsl">
+      <Filter>Resource Files</Filter>
+    </FxCompile>
+    <FxCompile Include="CloudBlendShader_ps.hlsl">
+      <Filter>Resource Files</Filter>
+    </FxCompile>
+    <FxCompile Include="linearDepth_ps.hlsl">
       <Filter>Resource Files</Filter>
     </FxCompile>
   </ItemGroup>

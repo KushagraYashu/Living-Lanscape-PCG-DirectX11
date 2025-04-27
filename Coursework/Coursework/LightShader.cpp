@@ -59,6 +59,7 @@ void LightShader::initShader(const wchar_t* vsFilename, const wchar_t* psFilenam
 	D3D11_SAMPLER_DESC samplerDesc;
 	D3D11_BUFFER_DESC lightBufferDesc;
 	D3D11_BUFFER_DESC cameraBufferDesc;
+	D3D11_BUFFER_DESC texHeightBufferDesc;
 
 	// Load vertex and pixel shaders from the provided files.
 	loadVertexShader(vsFilename);
@@ -102,6 +103,14 @@ void LightShader::initShader(const wchar_t* vsFilename, const wchar_t* psFilenam
 	cameraBufferDesc.MiscFlags = 0;
 	cameraBufferDesc.StructureByteStride = 0;
 	renderer->CreateBuffer(&cameraBufferDesc, NULL, &camBuffer);
+	
+	texHeightBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	texHeightBufferDesc.ByteWidth = sizeof(TexturingHeights);
+	texHeightBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	texHeightBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	texHeightBufferDesc.MiscFlags = 0;
+	texHeightBufferDesc.StructureByteStride = 0;
+	renderer->CreateBuffer(&texHeightBufferDesc, NULL, &texHeightBuffer);
 }
 
 void LightShader::initShader(const wchar_t* vsFilename, const wchar_t* hsFilename, const wchar_t* dsFilename, const wchar_t* psFilename) {
@@ -111,7 +120,7 @@ void LightShader::initShader(const wchar_t* vsFilename, const wchar_t* hsFilenam
 	loadDomainShader(dsFilename);
 }
 
-void LightShader::setShaderParametersTess(ID3D11DeviceContext* deviceContext, const XMMATRIX& world, const XMMATRIX& view, const XMMATRIX& projection, ID3D11ShaderResourceView* heightMap, ID3D11ShaderResourceView* texture, Light* light[lightSizeLightShader], XMFLOAT4 lightType[lightSizeLightShader], XMFLOAT3 camPos, XMFLOAT3 params, ID3D11ShaderResourceView* depthMap[lightSizeLightShader]) {
+void LightShader::setShaderParametersTess(ID3D11DeviceContext* deviceContext, const XMMATRIX& world, const XMMATRIX& view, const XMMATRIX& projection, ID3D11ShaderResourceView* heightMap, ID3D11ShaderResourceView* textureGrass, ID3D11ShaderResourceView* textureRock, ID3D11ShaderResourceView* textureSnow, XMFLOAT2 grassHeights, XMFLOAT2 rockHeights, XMFLOAT2 snowHeights, Light* light[lightSizeLightShader], XMFLOAT4 lightType[lightSizeLightShader], XMFLOAT3 camPos, ID3D11ShaderResourceView* depthMap[lightSizeLightShader]) {
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	MatrixBufferType* dataPtr;
 
@@ -148,14 +157,20 @@ void LightShader::setShaderParametersTess(ID3D11DeviceContext* deviceContext, co
 	deviceContext->HSSetConstantBuffers(0, 1, &matrixBuffer);
 	deviceContext->DSSetConstantBuffers(0, 1, &matrixBuffer);
 
-
+	TexturingHeights* texHPtr;
+	deviceContext->Map(texHeightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+	texHPtr = (TexturingHeights*)mappedResource.pData;
+	texHPtr->grassHeights = grassHeights;
+	texHPtr->rockHeights = rockHeights;
+	texHPtr->snowHeights = snowHeights;
+	deviceContext->Unmap(texHeightBuffer, 0);
+	deviceContext->PSSetConstantBuffers(1, 1, &texHeightBuffer);
 
 	// Setting camera parameters for vertex and domain shaders.
 	CameraBuffer* camPtr;
 	deviceContext->Map(camBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
 	camPtr = (CameraBuffer*)mappedResource.pData;
 	camPtr->cameraPosition = XMFLOAT4(camPos.x, camPos.y, camPos.z, 0.f);
-	camPtr->params = XMFLOAT4(params.x, params.y, params.z, 0);
 	deviceContext->Unmap(camBuffer, 0);
 	deviceContext->HSSetConstantBuffers(1, 1, &camBuffer);
 	deviceContext->DSSetConstantBuffers(2, 1, &camBuffer);
@@ -180,11 +195,12 @@ void LightShader::setShaderParametersTess(ID3D11DeviceContext* deviceContext, co
 	deviceContext->PSSetConstantBuffers(0, 1, &lightBuffer);
 
 	// Setting textures for pixel and domain shaders.
-	deviceContext->PSSetShaderResources(0, 1, &texture);
-	deviceContext->PSSetShaderResources(1, 1, &heightMap); // Heightmap for debugging
-	deviceContext->PSSetShaderResources(2, 2, depthMap);
+	deviceContext->PSSetShaderResources(0, 1, &textureGrass);
+	deviceContext->PSSetShaderResources(1, 1, &textureRock);
+	deviceContext->PSSetShaderResources(2, 1, &textureSnow);
+	deviceContext->PSSetShaderResources(3, 1, &heightMap); // Heightmap for debugging
+	deviceContext->PSSetShaderResources(4, 2, depthMap);
 	deviceContext->DSSetShaderResources(0, 1, &heightMap); // Heightmap for domain shader
-	deviceContext->PSSetShaderResources(0, 1, &heightMap); // Heightmap for domain shader
 
 	// Set texture samplers for both pixel and domain shaders.
 	deviceContext->PSSetSamplers(0, 1, &sampleState);

@@ -28,8 +28,8 @@ OutputType main(InputType input)
 {
     OutputType output;
     
+    // Setting world position with world transformation
     output.worldPos = mul(input.position, worldMatrix);
-    
     
     // Apply the world, view, and projection transformations to the vertex position
     output.position = mul(input.position, worldMatrix); // Apply world transformation

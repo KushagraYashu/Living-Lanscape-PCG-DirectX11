@@ -29,14 +29,24 @@ CloudsShader::~CloudsShader()
         cameraBuffer = 0;
     }
 
-    if (sphereBuffer) {
-        sphereBuffer->Release();
-        sphereBuffer = 0;
+    if (cloudBoxBuffer) {
+        cloudBoxBuffer->Release();
+        cloudBoxBuffer = 0;
     }
 
     if (lightBuffer) {
         lightBuffer->Release();
         lightBuffer = 0;
+    }
+
+    if (scrollBuffer) {
+        scrollBuffer->Release();
+        scrollBuffer = 0;
+    }
+
+    if (gasPropBuffer) {
+        gasPropBuffer->Release();
+        gasPropBuffer = 0;
     }
 
     // Release base shader components.
@@ -49,24 +59,14 @@ void CloudsShader::initShader(const wchar_t* vsFilename, const wchar_t* psFilena
     D3D11_BUFFER_DESC matrixBufferDesc;
     D3D11_SAMPLER_DESC samplerDesc;
     D3D11_BUFFER_DESC cameraBufferDesc;
-    D3D11_BUFFER_DESC sphereBufferDesc;
+    D3D11_BUFFER_DESC cloudBoxBufferDesc;
     D3D11_BUFFER_DESC lightBufferDesc;
+    D3D11_BUFFER_DESC scrollBufferDesc;
+    D3D11_BUFFER_DESC gasPropBufferDesc;
 
     // Load and compile the vertex and pixel shader files.
     loadVertexShader(vsFilename);
     loadPixelShader(psFilename);
-
-    // Set up blend state for transparency.
-    D3D11_BLEND_DESC blendDesc = {};
-    blendDesc.RenderTarget[0].BlendEnable = TRUE;
-    blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-    blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-    blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-    blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-    blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
-    blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    renderer->CreateBlendState(&blendDesc, &blendState);
 
     // Set up the matrix buffer description for the vertex shader.
     matrixBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
@@ -89,7 +89,7 @@ void CloudsShader::initShader(const wchar_t* vsFilename, const wchar_t* psFilena
     samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
     renderer->CreateSamplerState(&samplerDesc, &sampleState);
 
-    // Set up the scroll data constant buffer.
+    // Set up the camera data constant buffer.
     cameraBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
     cameraBufferDesc.ByteWidth = sizeof(CameraBuffer);
     cameraBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
@@ -97,15 +97,17 @@ void CloudsShader::initShader(const wchar_t* vsFilename, const wchar_t* psFilena
     cameraBufferDesc.MiscFlags = 0;
     cameraBufferDesc.StructureByteStride = 0;
     auto result = renderer->CreateBuffer(&cameraBufferDesc, NULL, &cameraBuffer);
+    
+    // Set up the cloud box data constant buffer.
+    cloudBoxBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+    cloudBoxBufferDesc.ByteWidth = sizeof(CloudBoxBuffer);
+    cloudBoxBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cloudBoxBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    cloudBoxBufferDesc.MiscFlags = 0;
+    cloudBoxBufferDesc.StructureByteStride = 0;
+    result = renderer->CreateBuffer(&cloudBoxBufferDesc, NULL, &cloudBoxBuffer);
 
-    sphereBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-    sphereBufferDesc.ByteWidth = sizeof(SphereBuffer);
-    sphereBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    sphereBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    sphereBufferDesc.MiscFlags = 0;
-    sphereBufferDesc.StructureByteStride = 0;
-    result = renderer->CreateBuffer(&sphereBufferDesc, NULL, &sphereBuffer);
-
+    // Set up the light data constant buffer.
     lightBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
     lightBufferDesc.ByteWidth = sizeof(LightBuffer);
     lightBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
@@ -113,10 +115,28 @@ void CloudsShader::initShader(const wchar_t* vsFilename, const wchar_t* psFilena
     lightBufferDesc.MiscFlags = 0;
     lightBufferDesc.StructureByteStride = 0;
     result = renderer->CreateBuffer(&lightBufferDesc, NULL, &lightBuffer);
+    
+    // Set up the scroll speed constant buffer.
+    scrollBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+    scrollBufferDesc.ByteWidth = sizeof(ScrollBuffer);
+    scrollBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    scrollBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    scrollBufferDesc.MiscFlags = 0;
+    scrollBufferDesc.StructureByteStride = 0;
+    result = renderer->CreateBuffer(&scrollBufferDesc, NULL, &scrollBuffer);
+
+    // Set up the gas properties constant buffer.
+    gasPropBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+    gasPropBufferDesc.ByteWidth = sizeof(GasPropBuffer);
+    gasPropBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    gasPropBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    gasPropBufferDesc.MiscFlags = 0;
+    gasPropBufferDesc.StructureByteStride = 0;
+    result = renderer->CreateBuffer(&gasPropBufferDesc, NULL, &gasPropBuffer);
 }
 
 // Set the shader parameters for the pixel and vertex shaders, including the scroll speed and time.
-void CloudsShader::setShaderParameters(ID3D11DeviceContext* deviceContext, const XMMATRIX& world, const XMMATRIX& view, const XMMATRIX& projection, ID3D11ShaderResourceView* texture, XMFLOAT3 cameraPos, XMFLOAT3 sphereCentre, float sphereRadius, XMFLOAT3 lightDirection, XMFLOAT4 lightColor, float sigma_s)
+void CloudsShader::setShaderParameters(ID3D11DeviceContext* deviceContext, const XMMATRIX& world, const XMMATRIX& view, const XMMATRIX& projection, ID3D11ShaderResourceView* texture, ID3D11ShaderResourceView* depthTexture, XMFLOAT3 cameraPos, XMFLOAT3 cloudBoxCentre, XMFLOAT3 halfSize, XMFLOAT3 lightDirection, XMFLOAT4 lightColor, float sigma_s, XMFLOAT2 scrollSpeed, float time, XMFLOAT4 gasColor, XMFLOAT3 sA_SamNo_G, float gasDensity)
 {
     HRESULT result;
     D3D11_MAPPED_SUBRESOURCE mappedResource;
@@ -137,7 +157,7 @@ void CloudsShader::setShaderParameters(ID3D11DeviceContext* deviceContext, const
     deviceContext->Unmap(matrixBuffer, 0);
     deviceContext->VSSetConstantBuffers(0, 1, &matrixBuffer);
 
-    // Send scroll data to the pixel shader (for cloud scrolling effect).
+    // Send camera data to the pixel shader.
     CameraBuffer* cameraPtr;
     deviceContext->Map(cameraBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
     cameraPtr = (CameraBuffer*)mappedResource.pData;
@@ -145,26 +165,47 @@ void CloudsShader::setShaderParameters(ID3D11DeviceContext* deviceContext, const
     deviceContext->Unmap(cameraBuffer, 0);
     deviceContext->PSSetConstantBuffers(0, 1, &cameraBuffer);
 
-    SphereBuffer* spherePtr;
-    deviceContext->Map(sphereBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-    spherePtr = (SphereBuffer*)mappedResource.pData;
-    spherePtr->sphereCentreAndRadius = XMFLOAT4(sphereCentre.x, sphereCentre.y, sphereCentre.z, sphereRadius);
-    deviceContext->Unmap(sphereBuffer, 0);
-    deviceContext->PSSetConstantBuffers(1, 1, &sphereBuffer);
+    // Send cloud box data
+    CloudBoxBuffer* cloudPtr;
+    deviceContext->Map(cloudBoxBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    cloudPtr = (CloudBoxBuffer*)mappedResource.pData;
+    cloudPtr->centre = XMFLOAT4(cloudBoxCentre.x, cloudBoxCentre.y, cloudBoxCentre.z, 0);
+	cloudPtr->halfSize = XMFLOAT4(halfSize.x, halfSize.y, halfSize.z, 0);
+    deviceContext->Unmap(cloudBoxBuffer, 0);
+    deviceContext->PSSetConstantBuffers(1, 1, &cloudBoxBuffer);
 
+    // Send light data
     LightBuffer* lightPtr;
     deviceContext->Map(lightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
     lightPtr = (LightBuffer*)mappedResource.pData;
-    lightPtr->lightColor = lightColor;
+    lightPtr->lightColor = XMFLOAT3(lightColor.x, lightColor.y, lightColor.z);
+	lightPtr->randomVal = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
     lightPtr->lightDirectionAndSigma = XMFLOAT4(lightDirection.x, lightDirection.y, lightDirection.z, sigma_s);
     deviceContext->Unmap(lightBuffer, 0);
     deviceContext->PSSetConstantBuffers(2, 1, &lightBuffer);
 
-    // Set blend state for proper transparency blending.
-    float blendFactor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    deviceContext->OMSetBlendState(blendState, blendFactor, 0xFFFFFFFF);
+    // Send scrolling speed data
+    ScrollBuffer* scrollPtr;
+    deviceContext->Map(scrollBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    scrollPtr = (ScrollBuffer*)mappedResource.pData;
+    scrollPtr->scrollSpeed = scrollSpeed;
+    scrollPtr->time = time;
+    scrollPtr->padding = 0.f;
+    deviceContext->Unmap(scrollBuffer, 0);
+    deviceContext->PSSetConstantBuffers(3, 1, &scrollBuffer);
+
+    // Send gas properties data
+    GasPropBuffer* gasPropPtr;
+    deviceContext->Map(gasPropBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    gasPropPtr = (GasPropBuffer*)mappedResource.pData;
+    gasPropPtr->gasColour = gasColor;
+    gasPropPtr->sA_SamNo_G = sA_SamNo_G;
+    gasPropPtr->gasDensity = gasDensity;
+    deviceContext->Unmap(gasPropBuffer, 0);
+    deviceContext->PSSetConstantBuffers(4, 1, &gasPropBuffer);
 
     // Set shader texture and sampler resources in the pixel shader.
     deviceContext->PSSetShaderResources(0, 1, &texture);
+    deviceContext->PSSetShaderResources(1, 1, &depthTexture);
     deviceContext->PSSetSamplers(0, 1, &sampleState);
 }

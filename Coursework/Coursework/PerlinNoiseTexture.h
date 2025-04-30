@@ -10,6 +10,8 @@
 #include "TextureManager.h"
 
 // Class for perlin noise texture
+// This uses an implementation of Perlin's Simplex Noise.
+// Rombauts, S., (2014). Perlin’s Simplex Noise C++ Implementation [Library/Framework]  Available at: https://github.com/SRombauts/SimplexNoise. (Accessed: 31 January 2025).
 class PerlinNoiseTexture {
 private:
 	// Terrain size and volume size variables

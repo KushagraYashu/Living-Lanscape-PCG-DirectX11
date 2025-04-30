@@ -118,7 +118,6 @@ float4 main(InputType input) : SV_TARGET
     float3 exitPoint = rayOrigin + t1 * rayDir;
     float distance = length(exitPoint - entryPoint);
     
-    //In-Scattering
     float stepSize = distance / sA_SamNo_G.y;
     float3 lightDir = -lightDirectionAndSigma.xyz;
     float sigma_s = lightDirectionAndSigma.w;
@@ -127,7 +126,7 @@ float4 main(InputType input) : SV_TARGET
     float4 result = float4(0, 0, 0, 0);
     float cos_thetha;
     float rho;
-    for (int i = 0; i < sA_SamNo_G.y; i++)
+    for (int i = 0; i < sA_SamNo_G.y; i++)  // Ray marching
     {
         float t = t0 + stepSize * (i + randVal); //parameter 't' to get a random point of the current sample (ray marching box)
         float3 samplePoint = rayOrigin + t * rayDir;
@@ -153,7 +152,6 @@ float4 main(InputType input) : SV_TARGET
             break;
         }
         
-        //Now in-scattering
         float light_t0, light_t1; //t0 would always be 0 since this ray starts from inside the sphere
         if (intersectAABB(samplePoint, lightDir, boxMin, boxMax, light_t0, light_t1))
         {

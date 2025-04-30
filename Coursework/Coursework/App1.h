@@ -27,6 +27,9 @@ static const int lightSize = 2;
 class App1 : public BaseApplication
 {
 public:
+    // Macro for deletion of pointers in the destructor
+    #define SAFE_DELETE(x) if (x) { delete x; x = nullptr; }
+
     // Constructor and Destructor
     App1();                          // Initializes the App1 object
     ~App1();                         // Cleans up resources during destruction

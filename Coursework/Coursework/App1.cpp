@@ -292,136 +292,68 @@ void App1::init(HINSTANCE hinstance, HWND hwnd, int screenWidth, int screenHeigh
 // Destructor for the App1 class, handles cleanup of allocated resources.
 App1::~App1()
 {
-	// Step 1: Run the base class destructor to clean up base class resources.
+	// Step 1: Base class cleanup
 	BaseApplication::~BaseApplication();
 
-	// Step 2: Clean up shaders.
-	if (depthShaderTess) {
-		delete depthShaderTess;
-		depthShaderTess = nullptr;
-	}
-	if (depthShader) {
-		delete depthShader;
-		depthShader = nullptr;
-	}
-	if (lightShaderTess) {
-		delete lightShaderTess;
-		lightShaderTess = nullptr;
-	}
-	if (lightShader) {
-		delete lightShader;
-		lightShader = nullptr;
-	}
-	if (textureShader) {
-		delete textureShader;
-		textureShader = nullptr;
-	}
-	if (skyDomeShader) {
-		delete skyDomeShader;
-		skyDomeShader = nullptr;
-	}
-	if (cloudsShader) {
-		delete cloudsShader;
-		cloudsShader = nullptr;
-	}
-	if (brightnessFilterShader) {
-		delete brightnessFilterShader;
-		brightnessFilterShader = nullptr;
-	}
-	if (sunBrightnessFilterShader) {
-		delete sunBrightnessFilterShader;
-		sunBrightnessFilterShader = nullptr;
-	}
-	if (gaussianBlurShader) {
-		delete gaussianBlurShader;
-		gaussianBlurShader = nullptr;
-	}
-	if (blendShader) {
-		delete blendShader;
-		blendShader = nullptr;
-	}
-	if (colorFilterShader) {
-		delete colorFilterShader;
-		colorFilterShader = nullptr;
-	}
-	if (sunShader) {
-		delete sunShader;
-		sunShader = nullptr;
-	}
+	// Step 2: Clean up shaders
+	SAFE_DELETE(linearDepthShaderTess);
+	SAFE_DELETE(linearDepthShader);
+	SAFE_DELETE(depthShaderTess);
+	SAFE_DELETE(depthShader);
+	SAFE_DELETE(lightShaderTess);
+	SAFE_DELETE(lightShader);
+	SAFE_DELETE(textureShader);
+	SAFE_DELETE(skyDomeShader);
+	SAFE_DELETE(cloudsShader);
+	SAFE_DELETE(brightnessFilterShader);
+	SAFE_DELETE(sunBrightnessFilterShader);
+	SAFE_DELETE(gaussianBlurShader);
+	SAFE_DELETE(blendShader);
+	SAFE_DELETE(cloudBlendShader);
+	SAFE_DELETE(colorFilterShader);
+	SAFE_DELETE(sunShader);
 
-	// Step 3: Clean up meshes.
-	if (mainMesh) {
-		delete mainMesh;
-		mainMesh = nullptr;
-	}
-	if (cloudsPlane) {
-		delete cloudsPlane;
-		cloudsPlane = nullptr;
-	}
-	if (spotlightModel) {
-		delete spotlightModel;
-		spotlightModel = nullptr;
-	}
-	if (cottageModel) {
-		delete cottageModel;
-		cottageModel = nullptr;
-	}
-	if (skyDome) {
-		delete skyDome;
-		skyDome = nullptr;
-	}
-	if (sunSphere) {
-		delete sunSphere;
-		sunSphere = nullptr;
-	}
+	// Step 3: Clean up meshes
+	SAFE_DELETE(mainMesh);
+	SAFE_DELETE(cloudsPlane);
+	SAFE_DELETE(volumetricCloudBox);
+	SAFE_DELETE(spotlightModel);
+	SAFE_DELETE(cottageModel);
+	SAFE_DELETE(coinModel);
+	SAFE_DELETE(skyDome);
+	SAFE_DELETE(sunSphere);
 
-	// Step 4: Clean up render textures.
-	if (renderTextureSource) {
-		delete renderTextureSource;
-		renderTextureSource = nullptr;
-	}
-	if (renderTextureSourceBloom) {
-		delete renderTextureSourceBloom;
-		renderTextureSourceBloom = nullptr;
-	}
+	// Step 4: Clean up render textures
+	SAFE_DELETE(renderTextureSource);
+	SAFE_DELETE(renderTextureSourceBloom);
 	for (int i = 0; i < 14; i++) {
-		if (renderTextureSunSphere[i]) {
-			delete renderTextureSunSphere[i];
-			renderTextureSunSphere[i] = nullptr;
-		}
+		SAFE_DELETE(renderTextureSunSphere[i]);
 	}
 	for (int i = 0; i < 6; i++) {
-		if (renderTexturesBloom[i]) {
-			delete renderTexturesBloom[i];
-			renderTexturesBloom[i] = nullptr;
-		}
+		SAFE_DELETE(renderTexturesBloom[i]);
 	}
-	if (renderTextureColorFilters) {
-		delete renderTextureColorFilters;
-		renderTextureColorFilters = nullptr;
+	SAFE_DELETE(renderTextureColorFilters);
+	SAFE_DELETE(renderTextureClouds);
+	SAFE_DELETE(renderTextureCloudBlended);
+	SAFE_DELETE(depthTexture);
+
+	// Step 5: Clean up ortho meshes
+	SAFE_DELETE(orthoMeshFull);
+	SAFE_DELETE(debugOrthoMesh[0]);
+	SAFE_DELETE(debugOrthoMesh[1]);
+
+	// Step 6: Clean up light objects
+	for (int i = 0; i < lightSize; i++) {
+		SAFE_DELETE(light[i]);
 	}
 
-	// Step 5: Clean up ortho meshes.
-	if (orthoMeshFull) {
-		delete orthoMeshFull;
-		orthoMeshFull = nullptr;
-	}
-	
-	// Step 6: Clean up light objects.
+	// Step 7: Clean up shadow maps
 	for (int i = 0; i < lightSize; i++) {
-		if (light[i]) {
-			delete light[i];
-			light[i] = nullptr;
-		}
+		SAFE_DELETE(shadowMaps[i]);
 	}
 
-	// Step 7: Clean up shadow maps.
-	for (int i = 0; i < lightSize; i++) {
-		if (shadowMaps[i]) {
-			delete shadowMaps[i];
-			shadowMaps[i] = nullptr;
-		}
-	}
+	// Step 8: Clean up noise texture generator
+	SAFE_DELETE(perlinNoiseTexture);
 }
 
 // Handles the main frame updates for the application, including rendering.

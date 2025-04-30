@@ -389,11 +389,13 @@ D3D::~D3D()
 	}
 }
 
+int j = 0;
+
 // Prepares the back buffer. Clears it and depth buffer, ready for rendering. Clears buffer to specified colour.
 void D3D::beginScene(float red, float green, float blue, float alpha)
 {
 	float color[4];
-	
+
 	color[0] = red;
 	color[1] = green;
 	color[2] = blue;
